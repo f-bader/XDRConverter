@@ -32,15 +32,6 @@ jobs:
         run: |
           Invoke-ScriptAnalyzer -Path .\src -Settings PSGallery -Recurse -ReportSummary -Severity Error
 
-      - name: Run Tests using Windows PowerShell
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          # Reuse downloaded modules from pwsh
-          $env:PSModulePath += ";$HOME\Documents\PowerShell\Modules"
-          $config = New-PesterConfiguration -Hashtable @{TestResult = @{Enabled = $true }; Run = @{Exit = $false }; Output = @{ Verbosity = 'Detailed' }}
-          Invoke-Pester -Configuration $config
-
       - name: Run Tests using PowerShell
         shell: pwsh
         run: |
