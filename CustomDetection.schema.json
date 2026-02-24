@@ -1,0 +1,185 @@
+{
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "title": "Microsoft XDR Custom Detection Template Schema",
+    "type": "object",
+    "description": "Schema for Microsoft XDR Custom Detection YAML templates used for automated deployment",
+    "additionalProperties": false,
+    "properties": {
+        "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A unique UUID used to globally identify the custom detection rule",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "ruleName": {
+            "type": "string",
+            "description": "Name of the custom detection rule",
+            "pattern": ""
+        },
+        "isEnabled": {
+            "type": "boolean",
+            "description": "Set to true. Legacy field as the global metadata will decide if the rule is enabled or not",
+            "default": true
+        },
+        "alertTitle": {
+            "type": "string",
+            "description": "Title of the alert that will be generated",
+            "pattern": ""
+        },
+        "frequency": {
+            "type": "string",
+            "description": "Frequency of rule execution. 0 = NRT (Near Real Time), other values in hours",
+            "enum": [
+                "0",
+                "1H",
+                "3H",
+                "12H",
+                "24H"
+            ]
+        },
+        "alertSeverity": {
+            "type": "string",
+            "description": "Severity level of the alert",
+            "enum": [
+                "Informational",
+                "Low",
+                "Medium",
+                "High"
+            ]
+        },
+        "alertDescription": {
+            "type": "string",
+            "description": "Detailed description of what the alert detects"
+        },
+        "alertRecommendedAction": {
+            "type": "string",
+            "description": "Recommended action to take when this alert is triggered. Can be multiline text"
+        },
+        "alertCategory": {
+            "type": "string",
+            "description": "Category of the alert, same options as the dropdown in the UI. Use camel case, no spaces",
+            "enum": [
+                "CredentialAccess",
+                "DefenseEvasion",
+                "Discovery",
+                "Execution",
+                "Exfiltration",
+                "Impact",
+                "InitialAccess",
+                "LateralMovement",
+                "Persistence",
+                "PrivilegeEscalation",
+                "Collection",
+                "CommandAndControl",
+                "SuspiciousActivity"
+            ]
+        },
+        "mitreTechniques": {
+            "type": "array",
+            "description": "Array of MITRE ATT&CK technique IDs",
+            "items": {
+                "type": "string",
+                "pattern": "^T\\d{4}(\\.\\d{3})?$",
+                "description": "MITRE ATT&CK technique ID (e.g., T1542.003)"
+            },
+            "uniqueItems": true
+        },
+        "organizationalScope": {
+            "type": "array",
+            "description": "Array of RBAC group names that define the organizational scope",
+            "items": {
+                "type": "string",
+                "description": "RBAC group name"
+            },
+            "uniqueItems": true
+        },
+        "impactedEntities": {
+            "type": "array",
+            "description": "Array of entities that are impacted by this detection",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "entityType": {
+                        "type": "string",
+                        "description": "Type of the impacted entity",
+                        "enum": [
+                            "Machine",
+                            "User",
+                            "Mailbox",
+                            "Account",
+                            "IP",
+                            "URL",
+                            "FileHash",
+                            "Process",
+                            "RegistryKey",
+                            "RegistryValue"
+                        ]
+                    },
+                    "entityIdentifier": {
+                        "type": "string",
+                        "description": "Field name that identifies the entity in the query results"
+                    }
+                },
+                "required": [
+                    "entityType",
+                    "entityIdentifier"
+                ],
+                "additionalProperties": false
+            }
+        },
+        "actions": {
+            "type": "array",
+            "description": "Array of automated response actions to take when the detection triggers",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "actionType": {
+                        "type": "string",
+                        "description": "Type of action to perform",
+                        "enum": [
+                            "IsolateMachine",
+                            "CollectInvestigationPackage",
+                            "RunAntivirusScan",
+                            "InitiateInvestigation",
+                            "RestrictAppExecution"
+                        ]
+                    },
+                    "additionalFields": {
+                        "type": "object",
+                        "description": "Additional configuration fields specific to the action type",
+                        "properties": {
+                            "isolationType": {
+                                "type": "string",
+                                "description": "Type of machine isolation (only for IsolateMachine action)",
+                                "enum": [
+                                    "Full",
+                                    "Selective"
+                                ],
+                                "default": "Full"
+                            }
+                        },
+                        "additionalProperties": true
+                    }
+                },
+                "required": [
+                    "actionType"
+                ],
+                "additionalProperties": false
+            }
+        },
+        "queryText": {
+            "type": "string",
+            "description": "KQL (Kusto Query Language) query that defines the detection logic"
+        }
+    },
+    "required": [
+        "guid",
+        "ruleName",
+        "alertTitle",
+        "frequency",
+        "alertSeverity",
+        "alertDescription",
+        "alertCategory",
+        "queryText"
+    ]
+}
