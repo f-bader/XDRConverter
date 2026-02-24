@@ -1,3 +1,5 @@
+![XDRConverter PowerShell Module logo](./XDRConvert.png)
+
 # XDRConverter PowerShell Module
 
 A PowerShell module for converting, managing, and deploying Defender XDR custom detection rules between YAML and JSON formats.
