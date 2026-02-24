@@ -2,9 +2,13 @@ Describe 'Deploy-CustomDetection' {
 
     BeforeAll {
         # Create a stub for Invoke-MgGraphRequest so Pester can mock it
-        # even when Microsoft.Graph.Authentication is not installed
+        # even when Microsoft.Graph.Authentication is not installed.
+        # The stub must declare the parameters used by Invoke-MgGraphRequestWithRetry
+        # so that Pester's generated mock exposes them (e.g. $Body for assertions).
         if (-not (Get-Command -Name Invoke-MgGraphRequest -ErrorAction SilentlyContinue)) {
-            function global:Invoke-MgGraphRequest { }
+            function global:Invoke-MgGraphRequest {
+                param($Method, $Uri, $Body, $Headers, $OutputType)
+            }
         }
 
         $ModulePath = Split-Path -Path $PSScriptRoot -Parent
