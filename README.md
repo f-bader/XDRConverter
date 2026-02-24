@@ -378,9 +378,11 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 
 ## Changelog
 
-### 1.0.1
+### 1.0.0
 
-- Refactored module structure with separated public/private functions
+- Initial release
+- `ConvertTo-CustomDetectionJson` — convert YAML detection rules to JSON
+- `ConvertTo-CustomDetectionYaml` — convert JSON detection rules to YAML
 - Added comprehensive Pester tests
 - Added `Deploy-CustomDetection` cmdlet for deploying rules via Microsoft Graph API
 - Added `Get-CustomDetection` cmdlet for retrieving rules from Defender XDR
@@ -395,16 +397,10 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 - Added change-detection to skip unnecessary API updates
 - Added `-WhatIf` and `-Confirm` support for `Deploy-CustomDetection`
 
-### 1.0.0
-
-- Initial release
-- `ConvertTo-CustomDetectionJson` — convert YAML detection rules to JSON
-- `ConvertTo-CustomDetectionYaml` — convert JSON detection rules to YAML
-
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
 
 ## Support
 
-For issues or feature requests, please open an issue on the [GitHub repository](https://github.com/f-bader/DefenderXDRConverter).
+For issues or feature requests, please open an issue on the [GitHub repository](https://github.com/f-bader/XDRConverter).
