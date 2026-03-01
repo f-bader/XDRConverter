@@ -62,7 +62,8 @@ function ConvertFrom-CustomDetectionYamlToJson {
                 'accountId', 'requestAccountSid', 'requestAccountName', 'requestAccountDomain',
                 'recipientObjectId', 'processAccountObjectId', 'initiatingAccountSid',
                 'initiatingProcessAccountUpn', 'initiatingAccountName', 'initiatingAccountDomain',
-                'servicePrincipalId', 'servicePrincipalName', 'targetAccountUpn'
+                'servicePrincipalId', 'servicePrincipalName', 'targetAccountUpn',
+                'initiatingProcessAccountObjectId', 'initiatingProcessAccountSid'
             )
             'Mailbox' = @(
                 'accountUpn', 'fileOwnerUpn', 'initiatingProcessAccountUpn', 'lastModifyingAccountUpn',
