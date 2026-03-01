@@ -112,7 +112,10 @@ function Deploy-CustomDetection {
         [string]$ParameterFile,
 
         [Parameter(HelpMessage = 'Skip change-detection and always push')]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter(HelpMessage = 'Allow identifiers not listed in the official documentation (emits a warning instead of throwing)')]
+        [switch]$SkipIdentifierValidation
     )
 
     begin {
@@ -128,6 +131,9 @@ function Deploy-CustomDetection {
                 { $_ -in '.yaml', '.yml' } {
                     $yamlObj = Import-CustomDetectionYamlFile -FilePath $InputFile
                     $convertParams = @{ YamlObject = $yamlObj }
+                    if ($SkipIdentifierValidation) {
+                        $convertParams['SkipIdentifierValidation'] = $true
+                    }
                     $jsonObj = ConvertFrom-CustomDetectionYamlToJson @convertParams
                 }
                 '.json' {
@@ -235,14 +241,9 @@ function Deploy-CustomDetection {
             # Fallback: scan all rules for UUID tag in description
             if (-not $existingRuleId) {
                 Write-Verbose "DetectorId '$detectorId' not found by ID lookup. Scanning descriptions for UUID tag..."
-                $allDetections = Get-CustomDetection
-                foreach ($det in $allDetections) {
-                    $detDesc = $det.detectionAction.alertTemplate.description
-                    if ($detDesc -and $detDesc -match [regex]::Escape($detectorId)) {
-                        $existingRuleId = $det.id
-                        Write-Verbose "Found matching detection by description tag: Rule Id '$existingRuleId'."
-                        break
-                    }
+                $existingRuleId = Get-CustomDetectionIdByDescriptionTag -DescriptionTag $detectorId
+                if ($existingRuleId) {
+                    Write-Verbose "Found matching detection by description tag: Rule Id '$existingRuleId'."
                 }
             }
 
@@ -310,7 +311,7 @@ function Deploy-CustomDetection {
                 }
             }
         } catch {
-            Write-Error "Error deploying detection rule from '$InputFile': $($_.Exception.Message)"
+            Write-Error "Error deploying detection rule from '$InputFile': $($_.Exception.Message) / $($_.ErrorDetails.Message)"
             throw
         }
     }

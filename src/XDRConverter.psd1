@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XDRConverter.psm1'
-    ModuleVersion     = '1.0.0'
+    ModuleVersion     = '1.1.0'
     GUID              = '81fb771a-c57e-41b8-9905-63dbf267c13f'
     Author            = 'Fabian Bader'
     CompanyName       = ''
@@ -14,7 +14,8 @@
         'Get-CustomDetectionIdByDescriptionTag',
         'Get-CustomDetectionIdByDetectorId',
         'Get-CustomDetectionIds',
-        'Get-CustomDetection'
+        'Get-CustomDetection',
+        'Remove-CustomDetection'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -24,7 +25,7 @@
             Tags         = @('XDR', 'Defender', 'Detection', 'YAML', 'JSON', 'Security', 'MITRE')
             LicenseUri   = ''
             ProjectUri   = 'https://github.com/f-bader/XDRConverter'
-            ReleaseNotes = 'Version 1.0.0: Initial release'
+            ReleaseNotes = 'Version 1.1.0: Added -SkipIdentifierValidation parameter, new User entity identifiers, Remove-CustomDetection cmdlet'
         }
     }
 }
