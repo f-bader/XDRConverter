@@ -14,7 +14,8 @@
         'Get-CustomDetectionIdByDescriptionTag',
         'Get-CustomDetectionIdByDetectorId',
         'Get-CustomDetectionIds',
-        'Get-CustomDetection'
+        'Get-CustomDetection',
+        'Remove-CustomDetection'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
