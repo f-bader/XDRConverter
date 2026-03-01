@@ -112,7 +112,10 @@ function Deploy-CustomDetection {
         [string]$ParameterFile,
 
         [Parameter(HelpMessage = 'Skip change-detection and always push')]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter(HelpMessage = 'Allow identifiers not listed in the official documentation (emits a warning instead of throwing)')]
+        [switch]$SkipIdentifierValidation
     )
 
     begin {
@@ -128,6 +131,9 @@ function Deploy-CustomDetection {
                 { $_ -in '.yaml', '.yml' } {
                     $yamlObj = Import-CustomDetectionYamlFile -FilePath $InputFile
                     $convertParams = @{ YamlObject = $yamlObj }
+                    if ($SkipIdentifierValidation) {
+                        $convertParams['SkipIdentifierValidation'] = $true
+                    }
                     $jsonObj = ConvertFrom-CustomDetectionYamlToJson @convertParams
                 }
                 '.json' {
