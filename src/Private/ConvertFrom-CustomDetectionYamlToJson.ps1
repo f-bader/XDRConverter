@@ -53,6 +53,7 @@ function ConvertFrom-CustomDetectionYamlToJson {
     # Map impacted entities to impactedAssets
     if ($YamlObject.impactedEntities) {
         # Define valid identifiers for each asset type
+        # https://learn.microsoft.com/en-us/graph/api/resources/security-impactedasset?view=graph-rest-beta
         $validIdentifiers = @{
             'Device'  = @(
                 'deviceId', 'deviceName', 'remoteDeviceName', 'targetDeviceName', 'destinationDeviceName'
