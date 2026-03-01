@@ -235,14 +235,9 @@ function Deploy-CustomDetection {
             # Fallback: scan all rules for UUID tag in description
             if (-not $existingRuleId) {
                 Write-Verbose "DetectorId '$detectorId' not found by ID lookup. Scanning descriptions for UUID tag..."
-                $allDetections = Get-CustomDetection
-                foreach ($det in $allDetections) {
-                    $detDesc = $det.detectionAction.alertTemplate.description
-                    if ($detDesc -and $detDesc -match [regex]::Escape($detectorId)) {
-                        $existingRuleId = $det.id
-                        Write-Verbose "Found matching detection by description tag: Rule Id '$existingRuleId'."
-                        break
-                    }
+                $existingRuleId = Get-CustomDetectionIdByDescriptionTag -DescriptionTag $detectorId
+                if ($existingRuleId) {
+                    Write-Verbose "Found matching detection by description tag: Rule Id '$existingRuleId'."
                 }
             }
 
