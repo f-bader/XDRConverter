@@ -305,7 +305,7 @@ function Deploy-CustomDetection {
                 }
             }
         } catch {
-            Write-Error "Error deploying detection rule from '$InputFile': $($_.Exception.Message)"
+            Write-Error "Error deploying detection rule from '$InputFile': $($_.Exception.Message) / $($_.ErrorDetails.Message)"
             throw
         }
     }
