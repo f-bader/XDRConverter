@@ -17,7 +17,10 @@ function ConvertFrom-CustomDetectionYamlToJson {
 
         [Parameter()]
         [ValidateSet('Informational', 'Low', 'Medium', 'High')]
-        [string]$SetSeverity
+        [string]$SetSeverity,
+
+        [Parameter()]
+        [switch]$SkipIdentifierValidation
     )
 
     # Start building the JSON object
@@ -89,7 +92,11 @@ function ConvertFrom-CustomDetectionYamlToJson {
             if ($validIdentifiers.ContainsKey($odataEntityType)) {
                 if ($identifier -notin $validIdentifiers[$odataEntityType]) {
                     $validList = $validIdentifiers[$odataEntityType] -join ', '
-                    throw "Invalid identifier '$identifier' for entity type '$odataEntityType'. Valid identifiers are: $validList"
+                    if ($SkipIdentifierValidation) {
+                        Write-Warning "Identifier '$identifier' for entity type '$odataEntityType' is not in the official documentation. Valid identifiers are: $validList"
+                    } else {
+                        throw "Invalid identifier '$identifier' for entity type '$odataEntityType'. Valid identifiers are: $validList"
+                    }
                 }
             }
 
