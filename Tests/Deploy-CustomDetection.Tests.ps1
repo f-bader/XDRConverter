@@ -483,6 +483,15 @@ queryText: DeviceEvents
                 )
             } -ModuleName XDRConverter
             Mock Invoke-MgGraphRequest {} -ModuleName XDRConverter
+            Mock Get-CustomDetectionIds {
+                return @(
+                    @{
+                        Id = 'found-by-desc'
+                        DetectorId = 'different-detector'
+                        DescriptionTag = $guid
+                    }
+                )
+            } -ModuleName XDRConverter
 
             $testYaml = @"
 guid: $guid
