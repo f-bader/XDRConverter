@@ -39,7 +39,7 @@ jobs:
           Invoke-Pester -Configuration $config
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Pester-Tests-${{ matrix.os }}
           path: testResults.xml
