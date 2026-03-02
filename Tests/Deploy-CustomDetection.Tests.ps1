@@ -240,8 +240,8 @@ queryText: DeviceEvents
             Deploy-CustomDetection -InputFile $tempFile -Confirm:$false
             $desc = $script:CapturedBody.detectionAction.alertTemplate.description
             # Should contain the tag exactly once
-            $matches = [regex]::Matches($desc, [regex]::Escape('81fb771a-c57e-41b8-9905-63dbf267c13f'))
-            $matches.Count | Should -Be 1
+            $UUIDmatches = [regex]::Matches($desc, [regex]::Escape('81fb771a-c57e-41b8-9905-63dbf267c13f'))
+            $UUIDmatches.Count | Should -Be 1
         }
     }
 
@@ -483,6 +483,15 @@ queryText: DeviceEvents
                 )
             } -ModuleName XDRConverter
             Mock Invoke-MgGraphRequest {} -ModuleName XDRConverter
+            Mock Get-CustomDetectionIds {
+                return @(
+                    @{
+                        Id = 'found-by-desc'
+                        DetectorId = 'different-detector'
+                        DescriptionTag = $guid
+                    }
+                )
+            } -ModuleName XDRConverter
 
             $testYaml = @"
 guid: $guid

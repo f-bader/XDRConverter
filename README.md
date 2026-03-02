@@ -17,6 +17,7 @@ The XDRConverter module provides cmdlets to work with Microsoft Defender XDR cus
 | `Get-CustomDetectionIds` | Lists detection rule IDs with detector IDs and description tags (cached) |
 | `Get-CustomDetectionIdByDetectorId` | Looks up a detection rule ID by its detector ID |
 | `Get-CustomDetectionIdByDescriptionTag` | Looks up a detection rule ID by its description tag UUID |
+| `Remove-CustomDetection` | Removes a detection rule from Defender XDR |
 
 ## Prerequisites
 
@@ -59,6 +60,7 @@ Converts a YAML Defender XDR detection file to JSON format. Supports file input,
 | OutputFolder | String | No | Folder for output when using `-UseDisplayNameAsFilename` or `-UseIdAsFilename` (defaults to temp directory) |
 | Enabled | Boolean | No | Set the `isEnabled` property to this value |
 | Severity | String | No | Override the alert severity (`Informational`, `Low`, `Medium`, `High`) |
+| SkipIdentifierValidation | Switch | No | Allow impacted entity identifiers not listed in the official documentation (emits a warning instead of throwing) |
 
 #### Examples
 
@@ -138,6 +140,7 @@ Creates or updates a Defender XDR custom detection rule from a YAML or JSON file
 | DescriptionTagPrefix | String | No | Prefix inside the description tag, e.g. `PREFIX` produces `[PREFIX:<UUID>]` |
 | ParameterFile | String | No | Path to a YAML parameter file for query variable replacement (see below) |
 | Force | Switch | No | Skip change-detection and always push the rule to the API |
+| SkipIdentifierValidation | Switch | No | Allow impacted entity identifiers not listed in the official documentation (emits a warning instead of throwing) |
 | WhatIf | Switch | No | Shows what changes would be made without applying them |
 | Confirm | Switch | No | Prompts for confirmation before creating or updating each rule |
 
@@ -276,6 +279,35 @@ Get-CustomDetectionIdByDescriptionTag -DescriptionTag '81fb771a-c57e-41b8-9905-6
 
 ---
 
+### Remove-CustomDetection
+
+Deletes a custom detection rule from Microsoft Defender XDR. The rule can be identified by its detection rule ID, its DetectorId (the GUID from the source file), or by the DescriptionTag UUID appended to the alert description during deployment.
+
+#### Parameters
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| Id | String | Yes* | The detection rule ID as returned by the Graph API (*ById parameter set) |
+| DetectorId | String | Yes* | The detector ID (GUID from the source file) (*ByDetectorId parameter set) |
+| DescriptionTag | String | Yes* | The UUID tag embedded in the alert description (*ByDescriptionTag parameter set) |
+| WhatIf | Switch | No | Shows what changes would be made without applying them |
+| Confirm | Switch | No | Prompts for confirmation before deleting the rule |
+
+#### Examples
+
+```powershell
+# Delete a detection rule by its ID
+Remove-CustomDetection -Id '12345'
+
+# Delete by detector ID (GUID from the YAML/JSON source)
+Remove-CustomDetection -DetectorId '81fb771a-c57e-41b8-9905-63dbf267c13f'
+
+# Delete by description tag UUID
+Remove-CustomDetection -DescriptionTag '81fb771a-c57e-41b8-9905-63dbf267c13f'
+```
+
+---
+
 ## Property Mapping
 
 ### YAML to JSON
@@ -379,6 +411,12 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 ```
 
 ## Changelog
+
+### 1.1.0
+
+- Added `-SkipIdentifierValidation` parameter to `ConvertTo-CustomDetectionJson` and `Deploy-CustomDetection` to allow non-standard impacted entity identifiers (emits a warning instead of throwing)
+- Added `initiatingProcessAccountObjectId` and `initiatingProcessAccountSid` to the list of valid User entity identifiers
+- Added `Remove-CustomDetection` cmdlet for deleting rules via Microsoft Graph API
 
 ### 1.0.0
 

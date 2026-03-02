@@ -92,7 +92,10 @@ function ConvertTo-CustomDetectionJson {
 
         [Parameter(HelpMessage = 'Set the severity level (Informational, Low, Medium, High)')]
         [ValidateSet('Informational', 'Low', 'Medium', 'High')]
-        [string]$Severity
+        [string]$Severity,
+
+        [Parameter(HelpMessage = 'Allow identifiers not listed in the official documentation (emits a warning instead of throwing)')]
+        [switch]$SkipIdentifierValidation
     )
 
     process {
@@ -113,6 +116,10 @@ function ConvertTo-CustomDetectionJson {
 
                 if ($PSBoundParameters.ContainsKey('Severity')) {
                     $convertParams['SetSeverity'] = $Severity
+                }
+
+                if ($SkipIdentifierValidation) {
+                    $convertParams['SkipIdentifierValidation'] = $true
                 }
 
                 # Convert to JSON object
