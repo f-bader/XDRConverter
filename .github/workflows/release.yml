@@ -5,10 +5,8 @@ on:
 
 jobs:
   CreateRelease:
+    if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
-    permissions:
-      id-token: write
-      contents: write
 
     steps:
       - uses: actions/checkout@v5
@@ -31,13 +29,15 @@ jobs:
         id: install-dependencies
         shell: pwsh
         run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted 
           Install-Module -Name powershell-yaml -Scope CurrentUser -Force -AllowClobber
 
       - name: Update PowerShell Module to PowerShell Gallery
         id: publish-to-gallery
         shell: pwsh
         run: |
-          Copy-Item ${{ github.workspace }}/src -Recurse -Destination ${{ github.workspace }}/XDRConverter/ -Force
+          New-Item -ItemType Directory -Path "${{ github.workspace }}/XDRConverter" -Force | Out-Null
+          Copy-Item "${{ github.workspace }}/src/*" -Recurse -Destination "${{ github.workspace }}/XDRConverter" -Force 
           Publish-Module -Path ${{ github.workspace }}/XDRConverter -NuGetApiKey ${{ secrets.PS_GALLERY_KEY }}
 
       - name: Build PowerShell module for GitHub
