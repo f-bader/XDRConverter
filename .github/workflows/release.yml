@@ -1,0 +1,59 @@
+name: Create PowerShell module release artifacts and publish them to GitHub and PowerShell Gallery
+
+on:
+  workflow_dispatch:
+
+jobs:
+  CreateRelease:
+    runs-on: windows-latest
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Get PowerShell module version
+        id: moduleversion
+        shell: pwsh
+        run: |
+          $ModuleRoot = "$($env:GITHUB_WORKSPACE)/src"
+          $ManifestPath = "$($ModuleRoot)/XDRConverter.psd1"
+          if ( -not (Test-Path $ManifestPath )) {
+              Write-Error "Could not find PowerShell module manifest ($ManifestPath)"
+              throw
+          } else {
+              $CurrentVersion = Import-PowerShellDataFile $ManifestPath | Select-Object -ExpandProperty ModuleVersion
+              Add-Content -Path $env:GITHUB_OUTPUT -Value "tag=$CurrentVersion"
+          }
+
+      - name: Install PowerShell module dependencies
+        id: install-dependencies
+        shell: pwsh
+        run: |
+          Install-Module -Name powershell-yaml -Scope CurrentUser -Force -AllowClobber
+
+      - name: Update PowerShell Module to PowerShell Gallery
+        id: publish-to-gallery
+        shell: pwsh
+        run: |
+          Copy-Item ${{ github.workspace }}/src -Recurse -Destination ${{ github.workspace }}/XDRConverter/ -Force
+          Publish-Module -Path ${{ github.workspace }}/XDRConverter -NuGetApiKey ${{ secrets.PS_GALLERY_KEY }}
+
+      - name: Build PowerShell module for GitHub
+        id: module-creation
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ${{ github.workspace }}/XDRConverter/* -DestinationPath ${{ github.workspace }}/XDRConverter.zip
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "XDRConverter.zip"
+          replacesArtifacts: true
+          allowUpdates: true
+          generateReleaseNotes: true
+          makeLatest: legacy
+          prerelease: false
+          tag: ${{ steps.moduleversion.outputs.tag }}
+          commit: ${{ github.sha }}
