@@ -513,6 +513,106 @@ queryText: DeviceEvents | new
         }
     }
 
+    Context 'MITRE Technique Validation' {
+
+        It 'Should have SkipMitreTechniqueValidation switch parameter' {
+            $cmd = Get-Command -Name 'Deploy-CustomDetection'
+            $param = $cmd.Parameters['SkipMitreTechniqueValidation']
+            $param | Should -Not -BeNullOrEmpty
+            $param.ParameterType.Name | Should -Be 'SwitchParameter'
+        }
+
+        It 'Should throw when a technique is not supported for the category' {
+            $testYaml = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: TEST-MitreInvalid
+isEnabled: true
+alertTitle: Test
+frequency: 1H
+alertSeverity: Medium
+alertDescription: Test
+alertCategory: Exfiltration
+mitreTechniques:
+  - T1041
+  - T1059.001
+queryText: DeviceEvents | take 1
+"@
+            $tempFile = Join-Path TestDrive: 'mitre-invalid.yaml'
+            $testYaml | Out-File -FilePath $tempFile -Encoding UTF8
+
+            { Deploy-CustomDetection -InputFile $tempFile -Confirm:$false } |
+                Should -Throw '*not supported by XDR*'
+        }
+
+        It 'Should deploy successfully when all techniques are valid for the category' {
+            Mock Invoke-MgGraphRequest { return @{ id = 'new-rule-id' } } -ModuleName XDRConverter
+
+            $testYaml = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: TEST-MitreValid
+isEnabled: true
+alertTitle: Test
+frequency: 1H
+alertSeverity: Medium
+alertDescription: Test
+alertCategory: Exfiltration
+mitreTechniques:
+  - T1041
+  - T1048
+queryText: DeviceEvents | take 1
+"@
+            $tempFile = Join-Path TestDrive: 'mitre-valid.yaml'
+            $testYaml | Out-File -FilePath $tempFile -Encoding UTF8
+
+            $result = Deploy-CustomDetection -InputFile $tempFile -Confirm:$false
+            $result.Action | Should -Be 'Created'
+        }
+
+        It 'Should bypass validation and deploy when -SkipMitreTechniqueValidation is set' {
+            Mock Invoke-MgGraphRequest { return @{ id = 'new-rule-id' } } -ModuleName XDRConverter
+
+            $testYaml = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: TEST-MitreSkip
+isEnabled: true
+alertTitle: Test
+frequency: 1H
+alertSeverity: Medium
+alertDescription: Test
+alertCategory: Exfiltration
+mitreTechniques:
+  - T1041
+  - T1059.001
+queryText: DeviceEvents | take 1
+"@
+            $tempFile = Join-Path TestDrive: 'mitre-skip.yaml'
+            $testYaml | Out-File -FilePath $tempFile -Encoding UTF8
+
+            $result = Deploy-CustomDetection -InputFile $tempFile -SkipMitreTechniqueValidation -Confirm:$false
+            $result.Action | Should -Be 'Created'
+        }
+
+        It 'Should deploy successfully when no mitreTechniques are defined' {
+            Mock Invoke-MgGraphRequest { return @{ id = 'new-rule-id' } } -ModuleName XDRConverter
+
+            $testYaml = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: TEST-MitreNone
+isEnabled: true
+alertTitle: Test
+frequency: 1H
+alertSeverity: Medium
+alertDescription: Test
+alertCategory: DefenseEvasion
+queryText: DeviceEvents | take 1
+"@
+            $tempFile = Join-Path TestDrive: 'mitre-none.yaml'
+            $testYaml | Out-File -FilePath $tempFile -Encoding UTF8
+
+            { Deploy-CustomDetection -InputFile $tempFile -Confirm:$false } | Should -Not -Throw
+        }
+    }
+
     Context 'Help Documentation' {
 
         It 'Should have help documentation' {

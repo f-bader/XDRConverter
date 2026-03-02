@@ -49,6 +49,11 @@ function Deploy-CustomDetection {
     .PARAMETER Force
         Skip the change-detection check and always push the rule to the API.
 
+    .PARAMETER SkipMitreTechniqueValidation
+        Skip the pre-deployment check that verifies all listed MITRE ATT&CK techniques are supported
+        by XDR for the selected alert category. Use this to deploy rules that include techniques not
+        yet reflected in the local XDR technique mapping.
+
     .PARAMETER WhatIf
         Shows what changes would be made without actually applying them.
 
@@ -79,6 +84,11 @@ function Deploy-CustomDetection {
         Deploy-CustomDetection -InputFile '.\input.yaml' -ParameterFile '.\params.yaml'
 
         Deploys the rule and applies query transformations from the parameter file.
+
+    .EXAMPLE
+        Deploy-CustomDetection -InputFile '.\input.yaml' -SkipMitreTechniqueValidation
+
+        Deploys the rule without validating the MITRE techniques against the XDR category mapping.
 
     .NOTES
         Requires the Microsoft.Graph.Authentication module and an active Graph API session.
@@ -115,7 +125,10 @@ function Deploy-CustomDetection {
         [switch]$Force,
 
         [Parameter(HelpMessage = 'Allow identifiers not listed in the official documentation (emits a warning instead of throwing)')]
-        [switch]$SkipIdentifierValidation
+        [switch]$SkipIdentifierValidation,
+
+        [Parameter(HelpMessage = 'Skip the MITRE ATT&CK technique validation against the XDR category mapping')]
+        [switch]$SkipMitreTechniqueValidation
     )
 
     begin {
@@ -125,7 +138,7 @@ function Deploy-CustomDetection {
 
     process {
         try {
-            # ── 1. Load the file ────────────────────────────────────────────
+            #region Load the file
             $extension = [System.IO.Path]::GetExtension($InputFile).ToLowerInvariant()
             switch ($extension) {
                 { $_ -in '.yaml', '.yml' } {
@@ -152,8 +165,9 @@ function Deploy-CustomDetection {
             if (-not $detectorId) {
                 throw "The input file does not contain a detectorId (guid). Cannot deploy."
             }
+            #endregion
 
-            # ── 1b. Apply parameter file (prepend/append/replace variables) ──
+            #region Apply parameter file
             if ($PSBoundParameters.ContainsKey('ParameterFile')) {
                 $originalQuery = $jsonObj.queryCondition.queryText
                 $resolvedQuery = Resolve-QueryVariables -QueryText $originalQuery -ParameterFilePath $ParameterFile
@@ -191,8 +205,23 @@ function Deploy-CustomDetection {
                     }
                 }
             }
+            #endregion
 
-            # ── 2. Apply overrides ──────────────────────────────────────────
+            #region Validate MITRE technique coverage
+            if (-not $SkipMitreTechniqueValidation) {
+                $mitreCheckObj = [PSCustomObject]@{
+                    alertCategory   = $jsonObj.detectionAction.alertTemplate.category
+                    mitreTechniques = $jsonObj.detectionAction.alertTemplate.mitreTechniques
+                }
+                $mitreResult = Test-CustomDetectionMitreTechnique -InputObject $mitreCheckObj -WarningAction SilentlyContinue
+                if (-not $mitreResult.IsValid) {
+                    $invalidList = $mitreResult.InvalidTechniques -join ', '
+                    throw "MITRE technique(s) not supported by XDR for category '$($mitreCheckObj.alertCategory)': $invalidList. Use -SkipMitreTechniqueValidation to bypass this check."
+                }
+            }
+            #endregion
+
+            #region Apply overrides
             if ($Disabled) {
                 $jsonObj.isEnabled = $false
             }
@@ -211,8 +240,9 @@ function Deploy-CustomDetection {
                     $jsonObj.detectionAction.alertTemplate.title = "$TitlePrefix$currentTitle"
                 }
             }
+            #endregion
 
-            # ── 3. Build and apply description tag ──────────────────────────
+            #region Build and apply description tag
             if (-not $NoDescriptionTag) {
                 $tag = if ($PSBoundParameters.ContainsKey('DescriptionTagPrefix') -and $DescriptionTagPrefix) {
                     "[$DescriptionTagPrefix`:$detectorId]"
@@ -230,8 +260,9 @@ function Deploy-CustomDetection {
                     $jsonObj.detectionAction.alertTemplate.description = $tag
                 }
             }
+            #endregion
 
-            # ── 4. Discover if rule already exists ──────────────────────────
+            #region Discover existing rule
             $existingRuleId = $null
             $existingRule = $null
 
@@ -251,8 +282,9 @@ function Deploy-CustomDetection {
             if ($existingRuleId) {
                 $existingRule = Get-CustomDetection -DetectionId $existingRuleId
             }
+            #endregion
 
-            # ── 5. Flatten local rule for comparison ────────────────────────
+            #region Flatten local rule for comparison
             $localFlat = @{
                 displayName = $jsonObj.displayName
                 isEnabled   = $jsonObj.isEnabled
@@ -263,8 +295,9 @@ function Deploy-CustomDetection {
                 severity    = $jsonObj.detectionAction.alertTemplate.severity
                 category    = $jsonObj.detectionAction.alertTemplate.category
             }
+            #endregion
 
-            # ── 6. Create or update ────────────────────────────────────────
+            #region Create or update
             $ruleName = $jsonObj.displayName
 
             if ($existingRule) {
@@ -310,6 +343,7 @@ function Deploy-CustomDetection {
                     }
                 }
             }
+            #endregion
         } catch {
             Write-Error "Error deploying detection rule from '$InputFile': $($_.Exception.Message) / $($_.ErrorDetails.Message)"
             throw
