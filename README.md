@@ -206,7 +206,6 @@ Categories not present in the XDR mapping (e.g. `SuspiciousActivity`) cannot be 
 | --- | --- | --- | --- |
 | InputFile | String | Yes* | Path to a detection YAML (`.yaml`/`.yml`) file (*File parameter set) |
 | InputObject | PSObject | Yes* | Parsed detection object; accepts pipeline input (*Object parameter set) |
-| PassThru | Switch | No | Returns a detailed result object (result object is always returned) |
 
 #### Output
 
