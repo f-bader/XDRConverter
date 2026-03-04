@@ -126,13 +126,11 @@ function Test-CustomDetectionMitreTechnique {
             }
 
             $supported = $xdrTechniqueMap[$category]
-            $supportedSet = [System.Collections.Generic.HashSet[string]]::new($supported, [System.StringComparer]::OrdinalIgnoreCase)
-
             $validTechniques = [System.Collections.Generic.List[string]]::new()
             $invalidTechniques = [System.Collections.Generic.List[string]]::new()
 
             foreach ($technique in $techniques) {
-                if ($supportedSet.Contains($technique)) {
+                if ($technique -in $supported) {
                     $validTechniques.Add($technique)
                 } else {
                     $invalidTechniques.Add($technique)
