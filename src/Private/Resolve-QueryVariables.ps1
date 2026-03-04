@@ -50,7 +50,7 @@ function Resolve-QueryVariables {
 
     $result = $QueryText
 
-    # ── 1. Replace variables ────────────────────────────────────────────
+    #region Replace variables
     $variables = $null
     if ($paramObj.ContainsKey('ReplaceQueryVariables') -and $paramObj['ReplaceQueryVariables']) {
         $variables = $paramObj['ReplaceQueryVariables']
@@ -89,18 +89,21 @@ function Resolve-QueryVariables {
             Write-Warning "Query variable '%%${varName}%%' is not defined in the parameter file and has no default value."
             return ''
         })
+    #endregion
 
-    # ── 2. Prepend query ────────────────────────────────────────────────
+    #region Prepend query
     if ($paramObj.ContainsKey('PrependQuery') -and $paramObj['PrependQuery']) {
         $prepend = $paramObj['PrependQuery'].TrimEnd("`r", "`n")
         $result = $prepend + "`n" + $result
     }
+    #endregion
 
-    # ── 3. Append query ─────────────────────────────────────────────────
+    #region Append query
     if ($paramObj.ContainsKey('AppendQuery') -and $paramObj['AppendQuery']) {
         $append = $paramObj['AppendQuery'].TrimEnd("`r", "`n")
         $result = $result.TrimEnd("`r", "`n") + "`n" + $append
     }
+    #endregion
 
     return $result
 }

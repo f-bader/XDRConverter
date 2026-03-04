@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XDRConverter.psm1'
-    ModuleVersion     = '1.1.0'
+    ModuleVersion     = '1.2.0'
     GUID              = '81fb771a-c57e-41b8-9905-63dbf267c13f'
     Author            = 'Fabian Bader'
     CompanyName       = ''
@@ -15,7 +15,8 @@
         'Get-CustomDetectionIdByDetectorId',
         'Get-CustomDetectionIds',
         'Get-CustomDetection',
-        'Remove-CustomDetection'
+        'Remove-CustomDetection',
+        'Test-CustomDetectionMitreTechnique'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()

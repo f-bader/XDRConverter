@@ -28,9 +28,10 @@ Describe 'XDRConverter Module' {
             $exportedFunctions | Should -Contain 'Get-CustomDetectionIdByDescriptionTag'
             $exportedFunctions | Should -Contain 'Get-CustomDetectionIds'
             $exportedFunctions | Should -Contain 'Remove-CustomDetection'
+            $exportedFunctions | Should -Contain 'Test-CustomDetectionMitreTechnique'
 
-            # Should only have 8 exported functions
-            $exportedFunctions.Count | Should -Be 8
+            # Should only have 9 exported functions
+            $exportedFunctions.Count | Should -Be 9
         }
 
         It 'Should require powershell-yaml module' {

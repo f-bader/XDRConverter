@@ -18,6 +18,7 @@ The XDRConverter module provides cmdlets to work with Microsoft Defender XDR cus
 | `Get-CustomDetectionIdByDetectorId` | Looks up a detection rule ID by its detector ID |
 | `Get-CustomDetectionIdByDescriptionTag` | Looks up a detection rule ID by its description tag UUID |
 | `Remove-CustomDetection` | Removes a detection rule from Defender XDR |
+| `Test-CustomDetectionMitreTechnique` | Validates MITRE ATT&CK techniques against XDR-supported categories |
 
 ## Prerequisites
 
@@ -141,6 +142,7 @@ Creates or updates a Defender XDR custom detection rule from a YAML or JSON file
 | ParameterFile | String | No | Path to a YAML parameter file for query variable replacement (see below) |
 | Force | Switch | No | Skip change-detection and always push the rule to the API |
 | SkipIdentifierValidation | Switch | No | Allow impacted entity identifiers not listed in the official documentation (emits a warning instead of throwing) |
+| SkipMitreTechniqueValidation | Switch | No | Skip the pre-deployment check that verifies MITRE ATT&CK techniques are supported by XDR for the selected alert category |
 | WhatIf | Switch | No | Shows what changes would be made without applying them |
 | Confirm | Switch | No | Prompts for confirmation before creating or updating each rule |
 
@@ -185,6 +187,54 @@ Deploy-CustomDetection -InputFile .\input.yaml -WhatIf
 
 # Force re-deploy even when no changes are detected
 Deploy-CustomDetection -InputFile .\input.yaml -Force
+
+# Deploy without validating MITRE techniques against the XDR category mapping
+Deploy-CustomDetection -InputFile .\input.yaml -SkipMitreTechniqueValidation
+```
+
+---
+
+### Test-CustomDetectionMitreTechnique
+
+Validates that MITRE ATT&CK techniques listed in a detection rule are supported by Microsoft XDR for the selected alert category. The technique mapping is derived from the XDR portal's front-end data and reflects the actual techniques available in each alert category dropdown.
+
+Categories not present in the XDR mapping (e.g. `SuspiciousActivity`) cannot be validated; in that case the function emits a warning and returns `IsValid = $true`.
+
+#### Parameters
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| InputFile | String | Yes* | Path to a detection YAML (`.yaml`/`.yml`) file (*File parameter set) |
+| InputObject | PSObject | Yes* | Parsed detection object; accepts pipeline input (*Object parameter set) |
+
+#### Output
+
+Returns a `PSCustomObject` with:
+
+| Property | Type | Description |
+| --- | --- | --- |
+| IsValid | Boolean | `$true` if all listed techniques are supported for the category |
+| Category | String | The `alertCategory` value |
+| ValidTechniques | String[] | Techniques that are supported for the category |
+| InvalidTechniques | String[] | Techniques that are NOT supported for the category |
+
+#### Examples
+
+```powershell
+# Validate MITRE techniques in a YAML file
+Test-CustomDetectionMitreTechnique -InputFile '.\detection.yaml'
+
+# Validate all YAML files in a directory
+Get-ChildItem '.\detections\*.yaml' | ForEach-Object { Test-CustomDetectionMitreTechnique -InputFile $_.FullName }
+
+# Pipeline input from a parsed YAML object
+Import-CustomDetectionYamlFile -FilePath '.\detection.yaml' | Test-CustomDetectionMitreTechnique
+
+# Check result and warn on unsupported techniques
+$result = Test-CustomDetectionMitreTechnique -InputFile '.\detection.yaml'
+if (-not $result.IsValid) {
+    Write-Warning "Unsupported techniques: $($result.InvalidTechniques -join ', ')"
+}
 ```
 
 ---
@@ -411,6 +461,13 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 ```
 
 ## Changelog
+
+### 1.2.0
+
+- Added `Test-CustomDetectionMitreTechnique` cmdlet to validate MITRE ATT&CK techniques against XDR-supported categories per alert category
+- Added `-SkipMitreTechniqueValidation` parameter to `Deploy-CustomDetection` to bypass the pre-deployment MITRE technique check
+- `Deploy-CustomDetection` now validates MITRE techniques before deploying by default and throws if unsupported techniques are found
+- Module version bumped to 1.2.0
 
 ### 1.1.0
 
