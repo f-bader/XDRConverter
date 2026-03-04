@@ -20,11 +20,12 @@ function Test-CustomDetectionMitreTechnique {
     .PARAMETER InputObject
         A parsed YAML/detection PSObject. Accepts pipeline input.
 
-    .PARAMETER PassThru
-        When set, returns a detailed result object. By default the function returns the result object always.
-
     .OUTPUTS
         PSCustomObject with:
+          IsValid          - $true if all listed techniques are supported for the category
+          Category         - the alertCategory value
+          ValidTechniques  - techniques that are supported for the category
+          InvalidTechniques- techniques that are NOT supported for the category
           IsValid          - $true if all listed techniques are supported for the category
           Category         - the alertCategory value
           ValidTechniques  - techniques that are supported for the category
