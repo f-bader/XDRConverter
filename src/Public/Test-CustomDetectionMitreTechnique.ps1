@@ -97,7 +97,7 @@ function Test-CustomDetectionMitreTechnique {
             }
 
             $category = $yamlObj.alertCategory
-            $techniques = $yamlObj.mitreTechniques
+            $techniques = @($yamlObj.mitreTechniques)
 
             if (-not $category) {
                 throw "The detection object does not contain an 'alertCategory' property."
