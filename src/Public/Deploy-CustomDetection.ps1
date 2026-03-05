@@ -345,7 +345,9 @@ function Deploy-CustomDetection {
             }
             #endregion
         } catch {
-            Write-Error "Error deploying detection rule from '$InputFile': $($_.Exception.Message) / $($_.ErrorDetails.Message)"
+            Write-Error "Error deploying detection rule from '$InputFile': $($_.Exception.Message)"
+            Write-Verbose "$($_.ErrorDetails.Message)"
+            Write-Debug "$(($jsonObj | ConvertTo-Json -Depth 10))"
             throw
         }
     }
