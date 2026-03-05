@@ -116,8 +116,45 @@ function ConvertFrom-CustomDetectionYamlToJson {
     }
 
     # Map response actions
+    # https://learn.microsoft.com/en-us/graph/api/resources/security-responseaction?view=graph-rest-beta
     if ($YamlObject.actions) {
-        $jsonObj.detectionAction.responseActions = $YamlObject.actions
+        $actionTypeMap = @{
+            'InitiateInvestigation'      = 'initiateInvestigationResponseAction'
+            'IsolateMachine'             = 'isolateDeviceResponseAction'
+            'CollectInvestigationPackage' = 'collectInvestigationPackageResponseAction'
+            'RunAntivirusScan'           = 'runAntivirusScanResponseAction'
+            'RestrictAppExecution'       = 'restrictAppExecutionResponseAction'
+        }
+
+        $responseActions = [System.Collections.Generic.List[hashtable]]::new()
+        foreach ($action in $YamlObject.actions) {
+            if (-not $actionTypeMap.ContainsKey($action.actionType)) {
+                throw "Unsupported response action type '$($action.actionType)'. Supported types are: $($actionTypeMap.Keys -join ', ')"
+            }
+
+            $odataType = "#microsoft.graph.security.$($actionTypeMap[$action.actionType])"
+            $responseAction = @{
+                '@odata.type' = $odataType
+                identifier    = 'deviceId'
+            }
+
+            # Handle IsolateMachine-specific isolationType field
+            if ($action.actionType -eq 'IsolateMachine') {
+                $isolationType = if ($action.additionalFields -and $action.additionalFields.isolationType) {
+                    $action.additionalFields.isolationType
+                } else {
+                    'Full'
+                }
+                if ($isolationType -notin @('Full', 'Selective')) {
+                    Write-Warning "Isolation type '$isolationType' is not supported. Defaulting to 'Full'."
+                    $isolationType = 'Full'
+                }
+                $responseAction.isolationType = $isolationType.ToLower()
+            }
+
+            $responseActions.Add($responseAction)
+        }
+        $jsonObj.detectionAction.responseActions = $responseActions
     }
 
     return $jsonObj

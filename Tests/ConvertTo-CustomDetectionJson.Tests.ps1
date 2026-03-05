@@ -215,6 +215,214 @@ queryText: DeviceEvents | where ActionType == "Test"
             $result = $jsonString | ConvertFrom-Json
             $result.detectionAction.alertTemplate.PSObject.Properties.Name | Should -Contain 'mitreTechniques' -Because 'mitreTechniques property must exist even when empty'
         }
+
+        It 'Should convert YAML response actions to Graph API JSON format' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-Actions
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+impactedEntities:
+  - entityType: Machine
+    entityIdentifier: DeviceId
+actions:
+  - actionType: IsolateMachine
+    additionalFields:
+      isolationType: Full
+  - actionType: CollectInvestigationPackage
+  - actionType: RunAntivirusScan
+  - actionType: InitiateInvestigation
+  - actionType: RestrictAppExecution
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-all.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            $result = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile | ConvertFrom-Json
+
+            $result.detectionAction.responseActions.Count | Should -Be 5
+
+            # Verify each action has the correct @odata.type
+            $result.detectionAction.responseActions[0].'@odata.type' | Should -Be '#microsoft.graph.security.isolateDeviceResponseAction'
+            $result.detectionAction.responseActions[0].identifier | Should -Be 'deviceId'
+            $result.detectionAction.responseActions[0].isolationType | Should -Be 'full'
+
+            $result.detectionAction.responseActions[1].'@odata.type' | Should -Be '#microsoft.graph.security.collectInvestigationPackageResponseAction'
+            $result.detectionAction.responseActions[1].identifier | Should -Be 'deviceId'
+
+            $result.detectionAction.responseActions[2].'@odata.type' | Should -Be '#microsoft.graph.security.runAntivirusScanResponseAction'
+            $result.detectionAction.responseActions[2].identifier | Should -Be 'deviceId'
+
+            $result.detectionAction.responseActions[3].'@odata.type' | Should -Be '#microsoft.graph.security.initiateInvestigationResponseAction'
+            $result.detectionAction.responseActions[3].identifier | Should -Be 'deviceId'
+
+            $result.detectionAction.responseActions[4].'@odata.type' | Should -Be '#microsoft.graph.security.restrictAppExecutionResponseAction'
+            $result.detectionAction.responseActions[4].identifier | Should -Be 'deviceId'
+        }
+
+        It 'Should default IsolateMachine isolationType to full when not specified' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-IsolateDefault
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+impactedEntities:
+  - entityType: Machine
+    entityIdentifier: DeviceId
+actions:
+  - actionType: IsolateMachine
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-isolate-default.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            $result = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile | ConvertFrom-Json
+
+            $result.detectionAction.responseActions[0].isolationType | Should -Be 'full'
+        }
+
+        It 'Should support Selective isolation type' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-IsolateSelective
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+impactedEntities:
+  - entityType: Machine
+    entityIdentifier: DeviceId
+actions:
+  - actionType: IsolateMachine
+    additionalFields:
+      isolationType: Selective
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-isolate-selective.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            $result = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile | ConvertFrom-Json
+
+            $result.detectionAction.responseActions[0].isolationType | Should -Be 'selective'
+        }
+
+        It 'Should throw on unsupported response action type' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-BadAction
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+impactedEntities:
+  - entityType: Machine
+    entityIdentifier: DeviceId
+actions:
+  - actionType: UnsupportedAction
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-bad.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            { ConvertTo-CustomDetectionJson -InputFile $tempYamlFile } | Should -Throw '*Unsupported response action type*'
+        }
+
+        It 'Should produce empty responseActions when no actions defined' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-NoActions
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-none.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            $jsonString = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile
+            $jsonString | Should -Match '"responseActions"\s*:\s*\[' -Because 'responseActions must be present as an array'
+        }
+
+        It 'Should throw when action identifier is not in impactedAssets' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-MissingIdentifier
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+actions:
+  - actionType: RunAntivirusScan
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-missing-identifier.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            { ConvertTo-CustomDetectionJson -InputFile $tempYamlFile } | Should -Throw '*is not defined in impactedAssets*'
+        }
+
+        It 'Should throw when action identifier does not match any impactedAsset identifier' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-WrongIdentifier
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+impactedEntities:
+  - entityType: User
+    entityIdentifier: AccountObjectId
+actions:
+  - actionType: IsolateMachine
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-wrong-identifier.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            { ConvertTo-CustomDetectionJson -InputFile $tempYamlFile } | Should -Throw '*is not defined in impactedAssets*'
+        }
+
+        It 'Should warn but not throw when -SkipIdentifierValidation is set and action identifier is missing' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-SkipValidation
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+actions:
+  - actionType: RunAntivirusScan
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'actions-skip-validation.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            $result = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile -SkipIdentifierValidation 3>&1
+            $warnings = $result | Where-Object { $_ -is [System.Management.Automation.WarningRecord] }
+            $warnings | Should -Not -BeNullOrEmpty
+            $warnings.Message | Should -Match 'is not defined in impactedAssets'
+        }
     }
 
     Context 'UseDisplayNameAsFilename and UseIdAsFilename' {
