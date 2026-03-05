@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XDRConverter.psm1'
-    ModuleVersion     = '1.4.0'
+    ModuleVersion     = '1.3.0'
     GUID              = '81fb771a-c57e-41b8-9905-63dbf267c13f'
     Author            = 'Fabian Bader'
     CompanyName       = ''
