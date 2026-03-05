@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XDRConverter.psm1'
-    ModuleVersion     = '1.2.0'
+    ModuleVersion     = '1.3.0'
     GUID              = '81fb771a-c57e-41b8-9905-63dbf267c13f'
     Author            = 'Fabian Bader'
     CompanyName       = ''
@@ -26,7 +26,7 @@
             Tags         = @('XDR', 'Defender', 'Detection', 'YAML', 'JSON', 'Security', 'MITRE')
             LicenseUri   = ''
             ProjectUri   = 'https://github.com/f-bader/XDRConverter'
-            ReleaseNotes = 'Version 1.1.0: Added -SkipIdentifierValidation parameter, new User entity identifiers, Remove-CustomDetection cmdlet'
+            ReleaseNotes = 'Version 1.3.0: Added response action mapping (YAML to/from Graph API format), identifier validation for response actions, auto-version bump workflow'
         }
     }
 }

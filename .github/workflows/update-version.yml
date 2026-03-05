@@ -1,0 +1,104 @@
+name: Update module version on PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  update-version:
+    name: Bump module version
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Determine version bump from commits
+        id: bump
+        shell: pwsh
+        run: |
+          # Get commits in this PR that are not on main
+          $commits = git log origin/main..HEAD --pretty=format:"%s" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+
+          Write-Output "Commits in PR:"
+          $commits | ForEach-Object { Write-Output "  $_" }
+
+          $bumpMajor = $false
+          $bumpMinor = $false
+          $bumpPatch = $false
+
+          foreach ($msg in $commits) {
+              # Check for breaking change indicator
+              if ($msg -match '^.+!:' -or $msg -match 'BREAKING CHANGE') {
+                  $bumpMajor = $true
+              }
+              # feat: -> minor bump
+              elseif ($msg -match '^feat(\(.+\))?:') {
+                  $bumpMinor = $true
+              }
+              # fix:, perf:, refactor: -> patch bump
+              elseif ($msg -match '^(fix|perf|refactor)(\(.+\))?:') {
+                  $bumpPatch = $true
+              }
+          }
+
+          if ($bumpMajor) {
+              $bump = 'major'
+          } elseif ($bumpMinor) {
+              $bump = 'minor'
+          } elseif ($bumpPatch) {
+              $bump = 'patch'
+          } else {
+              # No conventional commits found — default to minor (0.1.0)
+              $bump = 'minor'
+              Write-Output "No conventional commits detected. Defaulting to minor version bump."
+          }
+
+          Write-Output "Version bump type: $bump"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "type=$bump"
+
+      - name: Update module version
+        id: version
+        shell: pwsh
+        run: |
+          $manifestPath = "src/XDRConverter.psd1"
+          $manifest = Import-PowerShellDataFile $manifestPath
+          $current = [version]$manifest.ModuleVersion
+
+          $bumpType = "${{ steps.bump.outputs.type }}"
+          switch ($bumpType) {
+              'major' { $new = [version]::new($current.Major + 1, 0, 0) }
+              'minor' { $new = [version]::new($current.Major, $current.Minor + 1, 0) }
+              'patch' { $new = [version]::new($current.Major, $current.Minor, $current.Build + 1) }
+          }
+
+          Write-Output "Current version: $current"
+          Write-Output "New version:     $new"
+
+          # Replace version in the manifest file
+          $content = Get-Content $manifestPath -Raw
+          $content = $content -replace "ModuleVersion\s*=\s*'$([regex]::Escape($current))'", "ModuleVersion     = '$new'"
+          Set-Content -Path $manifestPath -Value $content -NoNewline
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "old=$current"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "new=$new"
+
+      - name: Commit version update
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/XDRConverter.psd1
+          # Only commit if there is a change
+          if git diff --cached --quiet; then
+            echo "No version change needed"
+          else
+            git commit -m "chore: bump version to ${{ steps.version.outputs.new }}"
+            git push
+          fi
