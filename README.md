@@ -462,6 +462,14 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 
 ## Changelog
 
+### 1.3.0
+
+- Added proper YAML-to-JSON and JSON-to-YAML mapping for response actions (`IsolateMachine`, `CollectInvestigationPackage`, `RunAntivirusScan`, `InitiateInvestigation`, `RestrictAppExecution`)
+- Response actions are now converted to/from Microsoft Graph API `@odata.type` format
+- Added validation that response action identifiers match defined impacted assets
+- Added GitHub Actions workflow to auto-bump module version on PRs based on conventional commits
+- Module version bumped to 1.3.0
+
 ### 1.2.0
 
 - Added `Test-CustomDetectionMitreTechnique` cmdlet to validate MITRE ATT&CK techniques against XDR-supported categories per alert category

@@ -32,6 +32,7 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         'alertRecommendedAction'
         'mitreTechniques'
         'impactedEntities'
+        'actions'
         'queryText'
     )
 
@@ -99,8 +100,44 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         $yamlObj.organizationalScope = $JsonObject.detectionAction.organizationalScope
     }
 
-    if ($JsonObject.detectionAction.responseActions) {
-        $yamlObj.actions = $JsonObject.detectionAction.responseActions
+    # Map response actions back to YAML format
+    if ($JsonObject.detectionAction.responseActions -and $JsonObject.detectionAction.responseActions.Count -gt 0) {
+        $odataTypeToActionMap = @{
+            'initiateInvestigationResponseAction'      = 'InitiateInvestigation'
+            'isolateDeviceResponseAction'              = 'IsolateMachine'
+            'collectInvestigationPackageResponseAction' = 'CollectInvestigationPackage'
+            'runAntivirusScanResponseAction'           = 'RunAntivirusScan'
+            'restrictAppExecutionResponseAction'       = 'RestrictAppExecution'
+        }
+
+        $actions = [System.Collections.Generic.List[hashtable]]::new()
+        foreach ($responseAction in $JsonObject.detectionAction.responseActions) {
+            $odataType = $responseAction.'@odata.type'
+            # Extract the action suffix from the full @odata.type string
+            $actionSuffix = if ($odataType -match '#microsoft\.graph\.security\.(\w+)$') {
+                $Matches[1]
+            } else {
+                $odataType
+            }
+
+            $actionType = $odataTypeToActionMap[$actionSuffix]
+            if (-not $actionType) {
+                Write-Warning "Unknown response action type '$odataType'. Skipping."
+                continue
+            }
+
+            $actionObj = @{ actionType = $actionType }
+
+            # Restore IsolateMachine-specific additionalFields
+            if ($actionType -eq 'IsolateMachine' -and $responseAction.isolationType) {
+                $actionObj.additionalFields = @{
+                    isolationType = (Get-Culture).TextInfo.ToTitleCase($responseAction.isolationType)
+                }
+            }
+
+            $actions.Add($actionObj)
+        }
+        $yamlObj.actions = $actions
     }
 
     $orderedYamlObj = [ordered]@{}

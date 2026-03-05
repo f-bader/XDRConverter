@@ -285,6 +285,98 @@ Describe 'ConvertTo-CustomDetectionYaml' {
       $result | Should -Match 'alertCategory:\s*DefenseEvasion'
       $result | Should -Match 'T1070\.001'
     }
+
+    It 'Should convert Graph API response actions back to YAML action format' {
+      $testJsonContent = @"
+{
+  "detectionAction": {
+    "alertTemplate": {
+      "category": "DefenseEvasion",
+      "description": "Test description",
+      "severity": "medium",
+      "title": "Test Alert"
+    },
+    "organizationalScope": null,
+    "responseActions": [
+      {
+        "@odata.type": "#microsoft.graph.security.isolateDeviceResponseAction",
+        "identifier": "deviceId",
+        "isolationType": "full"
+      },
+      {
+        "@odata.type": "#microsoft.graph.security.collectInvestigationPackageResponseAction",
+        "identifier": "deviceId"
+      },
+      {
+        "@odata.type": "#microsoft.graph.security.runAntivirusScanResponseAction",
+        "identifier": "deviceId"
+      },
+      {
+        "@odata.type": "#microsoft.graph.security.initiateInvestigationResponseAction",
+        "identifier": "deviceId"
+      },
+      {
+        "@odata.type": "#microsoft.graph.security.restrictAppExecutionResponseAction",
+        "identifier": "deviceId"
+      }
+    ]
+  },
+  "detectorId": "81fb771a-c57e-41b8-9905-63dbf267c13f",
+  "displayName": "PREFIX-TEST-Actions",
+  "isEnabled": true,
+  "queryCondition": {
+    "queryText": "DeviceEvents"
+  },
+  "schedule": {
+    "period": "0"
+  }
+}
+"@
+      $tempJsonFile = Join-Path TestDrive: 'yaml-actions.json'
+      $testJsonContent | Out-File -FilePath $tempJsonFile -Encoding UTF8
+
+      $result = ConvertTo-CustomDetectionYaml -InputFile $tempJsonFile
+
+      # Verify all actions are present in the YAML output
+      $result | Should -Match 'actionType:\s*IsolateMachine'
+      $result | Should -Match 'isolationType:\s*Full'
+      $result | Should -Match 'actionType:\s*CollectInvestigationPackage'
+      $result | Should -Match 'actionType:\s*RunAntivirusScan'
+      $result | Should -Match 'actionType:\s*InitiateInvestigation'
+      $result | Should -Match 'actionType:\s*RestrictAppExecution'
+    }
+
+    It 'Should not include actions key when no response actions exist' {
+      $testJsonContent = @"
+{
+  "detectionAction": {
+    "alertTemplate": {
+      "category": "DefenseEvasion",
+      "description": "Test description",
+      "severity": "medium",
+      "title": "Test Alert"
+    },
+    "organizationalScope": null,
+    "responseActions": []
+  },
+  "detectorId": "81fb771a-c57e-41b8-9905-63dbf267c13f",
+  "displayName": "PREFIX-TEST-NoActions",
+  "isEnabled": true,
+  "queryCondition": {
+    "queryText": "DeviceEvents"
+  },
+  "schedule": {
+    "period": "0"
+  }
+}
+"@
+      $tempJsonFile = Join-Path TestDrive: 'yaml-no-actions.json'
+      $testJsonContent | Out-File -FilePath $tempJsonFile -Encoding UTF8
+
+      $result = ConvertTo-CustomDetectionYaml -InputFile $tempJsonFile
+      $result | Should -Not -Match 'actions:'
+      $result | Should -Not -Match 'actionType:'
+    }
   }
 
   Context 'UseDisplayNameAsFilename and UseIdAsFilename' {
