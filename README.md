@@ -462,6 +462,10 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 
 ## Changelog
 
+### 1.3.1
+- Less verbose logging on deployment failure, added error details and debug output of the JSON object being deployed for easier troubleshooting
+- Module version bumped to 1.3.1
+
 ### 1.3.0
 
 - Added proper YAML-to-JSON and JSON-to-YAML mapping for response actions (`IsolateMachine`, `CollectInvestigationPackage`, `RunAntivirusScan`, `InitiateInvestigation`, `RestrictAppExecution`)

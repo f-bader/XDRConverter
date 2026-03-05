@@ -42,7 +42,7 @@ function Get-CustomDetectionIdByDetectorId {
             if ($detectionRule) {
                 return $detectionRule.Id
             } else {
-                Write-Warning "No detection rule found with detectorId: $DetectorId"
+                Write-Verbose "No detection rule found with detectorId: $DetectorId"
                 return $null
             }
         } catch {
