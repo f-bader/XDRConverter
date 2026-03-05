@@ -51,6 +51,8 @@ function ConvertFrom-CustomDetectionYamlToJson {
     # Map MITRE techniques
     if ($YamlObject.mitreTechniques) {
         $jsonObj.detectionAction.alertTemplate.mitreTechniques = $YamlObject.mitreTechniques
+    } else {
+        $jsonObj.detectionAction.alertTemplate.mitreTechniques = @()
     }
 
     # Map impacted entities to impactedAssets

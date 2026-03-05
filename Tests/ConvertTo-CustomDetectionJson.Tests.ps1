@@ -190,6 +190,31 @@ queryText: DeviceEvents | where ActionType == "Test"
             $result.detectionAction.alertTemplate.mitreTechniques | Should -Contain 'T1234.567'
             $result.queryCondition.queryText | Should -Match 'Test'
         }
+
+        It 'Should include mitreTechniques as an empty array when none are defined' {
+            $testYamlContent = @"
+guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
+ruleName: PREFIX-TEST-Rule
+isEnabled: true
+alertTitle: Test Alert
+frequency: 0
+alertSeverity: Medium
+alertDescription: Test description
+alertCategory: DefenseEvasion
+queryText: DeviceEvents | where ActionType == "Test"
+"@
+            $tempYamlFile = Join-Path TestDrive: 'mitre-empty.yaml'
+            $testYamlContent | Out-File -FilePath $tempYamlFile -Encoding UTF8
+
+            $jsonString = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile
+
+            # Verify the raw JSON string contains mitreTechniques as an array
+            $jsonString | Should -Match '"mitreTechniques"\s*:\s*\[' -Because 'mitreTechniques must be present as an array in the JSON output'
+
+            # Also verify via parsed object that the property exists
+            $result = $jsonString | ConvertFrom-Json
+            $result.detectionAction.alertTemplate.PSObject.Properties.Name | Should -Contain 'mitreTechniques' -Because 'mitreTechniques property must exist even when empty'
+        }
     }
 
     Context 'UseDisplayNameAsFilename and UseIdAsFilename' {
