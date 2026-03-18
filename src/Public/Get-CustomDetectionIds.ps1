@@ -5,9 +5,9 @@ function Get-CustomDetectionIds {
 
     .DESCRIPTION
         Queries Microsoft Graph API to retrieve all detection rules and returns
-        their detection rule ID, detector ID, and the UUID from the description
-        tag (if present). Results are cached for the duration specified by
-        CacheTtlMinutes (default: 60 minutes).
+        their detection rule ID, detector ID, the UUID from the description
+        tag (if present), and the tag prefix (if present). Results are cached 
+        for the duration specified by CacheTtlMinutes (default: 60 minutes).
 
     .PARAMETER CacheTtlMinutes
         How long (in minutes) to keep the cached result before re-querying the API.
@@ -78,19 +78,22 @@ function Get-CustomDetectionIds {
                 $result = @()
             } else {
                 $uuidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
-                $tagPattern = "\[(?:[^:\]]*:)?($uuidPattern)\]"
+                $tagPattern = "\[(?:([^:\]]+):)?($uuidPattern)\]"
 
                 $result = $allValues | ForEach-Object {
                     $descriptionTag = $null
+                    $tagPrefix = $null
                     $desc = $_.detectionAction.alertTemplate.description
                     if ($desc -and $desc -match $tagPattern) {
-                        $descriptionTag = $Matches[1]
+                        $tagPrefix = $Matches[1]
+                        $descriptionTag = $Matches[2]
                     }
 
                     [PSCustomObject]@{
                         Id             = $_.id
                         DetectorId     = $_.detectorId
                         DescriptionTag = $descriptionTag
+                        TagPrefix      = $tagPrefix
                     }
                 }
             }

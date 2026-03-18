@@ -489,6 +489,7 @@ queryText: DeviceEvents
                         Id = 'found-by-desc'
                         DetectorId = 'different-detector'
                         DescriptionTag = $guid
+                        TagPrefix = $null
                     }
                 )
             } -ModuleName XDRConverter
