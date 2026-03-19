@@ -267,7 +267,13 @@ Get-CustomDetection -DetectionId '81fb771a-c57e-41b8-9905-63dbf267c13f' |
 
 ### Get-CustomDetectionIds
 
-Lists detection rule IDs with their detector IDs and description tags. Results are cached for the specified duration (default: 60 minutes) to reduce API calls.
+Lists detection rule IDs with their detector IDs, description tags, and tag prefixes. Results are cached for the specified duration (default: 60 minutes) to reduce API calls.
+
+The output includes:
+- **Id**: The detection rule ID
+- **DetectorId**: The detector ID (GUID)
+- **DescriptionTag**: The UUID extracted from the description tag (e.g., from `[CSOC:uuid]` or `[uuid]`)
+- **TagPrefix**: The prefix text from the description tag (e.g., `CSOC` from `[CSOC:uuid]`, or `$null` if no prefix)
 
 #### Parameters
 
@@ -461,6 +467,11 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 ```
 
 ## Changelog
+
+### 1.4.0
+- Added `TagPrefix` column to `Get-CustomDetectionIds` output to show the prefix from description tags (e.g., `CSOC` from `[CSOC:uuid]`)
+- Improved test reliability by clearing `DetectionIdsCache` within module scope
+- Module version bumped to 1.4.0
 
 ### 1.3.1
 - Less verbose logging on deployment failure, added error details and debug output of the JSON object being deployed for easier troubleshooting

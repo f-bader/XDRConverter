@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XDRConverter.psm1'
-    ModuleVersion     = '1.3.1'
+    ModuleVersion     = '1.4.0'
     GUID              = '81fb771a-c57e-41b8-9905-63dbf267c13f'
     Author            = 'Fabian Bader'
     CompanyName       = ''
@@ -26,7 +26,7 @@
             Tags         = @('XDR', 'Defender', 'Detection', 'YAML', 'JSON', 'Security', 'MITRE')
             LicenseUri   = ''
             ProjectUri   = 'https://github.com/f-bader/XDRConverter'
-            ReleaseNotes = 'Version 1.3.1: Less verbose logging, added error details and debug output on deployment failure.'
+            ReleaseNotes = 'Version 1.4.0: Added TagPrefix column to Get-CustomDetectionIds output.'
         }
     }
 }
