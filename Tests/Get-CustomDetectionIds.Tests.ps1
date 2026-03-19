@@ -107,11 +107,23 @@ Describe 'Get-CustomDetectionIds' {
     Context 'Caching Behavior' {
         BeforeEach {
             Mock Assert-MgGraphConnection {} -ModuleName XDRConverter
-            
-            # Clear the cache before each test
-            $script:DetectionIdsCache = @{
-                Data = $null
-                ExpiresAt = [datetime]::MinValue
+
+            # Clear the cache before each test inside the module scope,
+            # because $script: refers to the module's script scope there.
+            InModuleScope XDRConverter {
+                $script:DetectionIdsCache = @{
+                    Data      = $null
+                    ExpiresAt = [datetime]::MinValue
+                }
+            }
+        }
+
+        AfterEach {
+            InModuleScope XDRConverter {
+                $script:DetectionIdsCache = @{
+                    Data      = $null
+                    ExpiresAt = [datetime]::MinValue
+                }
             }
         }
 
