@@ -4,6 +4,11 @@ BeforeAll {
     Import-Module $modulePath -Force
 }
 
+AfterAll {
+    # Remove the module to avoid state leaking between test runs
+    Remove-Module XDRConverter -ErrorAction SilentlyContinue
+}
+
 Describe 'Get-CustomDetectionIds' {
     Context 'TagPrefix Extraction' {
         BeforeEach {
