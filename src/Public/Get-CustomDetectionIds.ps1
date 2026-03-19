@@ -85,7 +85,11 @@ function Get-CustomDetectionIds {
                     $tagPrefix = $null
                     $desc = $_.detectionAction.alertTemplate.description
                     if ($desc -and $desc -match $tagPattern) {
-                        $tagPrefix = $Matches[1]
+                        if ($null -ne $Matches[1]) {
+                            $tagPrefix = $Matches[1]
+                        } else {
+                            $tagPrefix = $null
+                        }
                         $descriptionTag = $Matches[2]
                     }
 
