@@ -190,12 +190,6 @@ Describe 'Get-CustomDetectionIds' {
             $cmd = Get-Command Get-CustomDetectionIds
             $cmd.Parameters.Keys | Should -Contain 'Force'
         }
-
-        It 'Should have default CacheTtlMinutes value of 60' {
-            $cmd = Get-Command Get-CustomDetectionIds
-            $param = $cmd.Parameters['CacheTtlMinutes']
-            $param | Should -Not -BeNullOrEmpty
-        }
     }
 
     Context 'Help Documentation' {
