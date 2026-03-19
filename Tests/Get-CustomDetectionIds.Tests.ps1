@@ -52,17 +52,21 @@ Describe 'Get-CustomDetectionIds' {
             } -ModuleName XDRConverter
 
             # Clear the cache before each test
-            $script:DetectionIdsCache = @{
-                Data = $null
-                ExpiresAt = [datetime]::MinValue
+            InModuleScope XDRConverter {
+                $script:DetectionIdsCache = @{
+                    Data      = $null
+                    ExpiresAt = [datetime]::MinValue
+                }
             }
         }
 
         AfterEach {
             # Clear the cache after each test to avoid interference
-            $script:DetectionIdsCache = @{
-                Data = $null
-                ExpiresAt = [datetime]::MinValue
+            InModuleScope XDRConverter {
+                $script:DetectionIdsCache = @{
+                    Data      = $null
+                    ExpiresAt = [datetime]::MinValue
+                }
             }
         }
 
