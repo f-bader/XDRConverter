@@ -111,7 +111,7 @@ Describe 'Get-CustomDetectionIds' {
             }
         }
 
-        It 'Should call API when cache is empty or expired' {
+        It 'Should use cache on subsequent calls without -Force' {
             Mock Invoke-MgGraphRequestWithRetry {
                 return @{
                     value = @(
@@ -129,17 +129,30 @@ Describe 'Get-CustomDetectionIds' {
                 }
             } -ModuleName XDRConverter
 
-            $result = Get-CustomDetectionIds -Force
-            $result | Should -Not -BeNullOrEmpty
-            $result[0].Id | Should -Be 'test-rule'
+            # First call should hit the API because the cache is empty
+            $firstResult = Get-CustomDetectionIds
+
+            # Second call should use the cached data and not hit the API again
+            $secondResult = Get-CustomDetectionIds
+
+            Assert-MockCalled Invoke-MgGraphRequestWithRetry -Times 1 -Exactly -ModuleName XDRConverter
+
+            $firstResult  | Should -Not -BeNullOrEmpty
+            $secondResult | Should -Not -BeNullOrEmpty
+            $firstResult[0].Id  | Should -Be 'test-rule'
+            $secondResult[0].Id | Should -Be 'test-rule'
         }
 
-        It 'Should force API call with -Force parameter' {
+        It 'Should force API call with -Force parameter even when cache is populated' {
+            # Track how many times the API is called and vary the response
+            $script:CallCount = 0
+
             Mock Invoke-MgGraphRequestWithRetry {
+                $script:CallCount++
                 return @{
                     value = @(
                         @{
-                            id = 'test-rule'
+                            id = "test-rule-$script:CallCount"
                             detectorId = 'test-detector'
                             detectionAction = @{
                                 alertTemplate = @{
@@ -152,8 +165,18 @@ Describe 'Get-CustomDetectionIds' {
                 }
             } -ModuleName XDRConverter
 
-            $result = Get-CustomDetectionIds -Force
-            $result | Should -Not -BeNullOrEmpty
+            # First call populates the cache
+            $cachedResult = Get-CustomDetectionIds
+
+            # Second call with -Force should bypass cache and call API again
+            $forcedResult = Get-CustomDetectionIds -Force
+
+            Assert-MockCalled Invoke-MgGraphRequestWithRetry -Times 2 -Exactly -ModuleName XDRConverter
+
+            $cachedResult  | Should -Not -BeNullOrEmpty
+            $forcedResult  | Should -Not -BeNullOrEmpty
+            $cachedResult[0].Id | Should -Be 'test-rule-1'
+            $forcedResult[0].Id | Should -Be 'test-rule-2'
         }
     }
 
