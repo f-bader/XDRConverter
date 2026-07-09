@@ -468,6 +468,10 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 
 ## Changelog
 
+### 1.4.1
+- Included Graph API error details in deployment failure messages for easier troubleshooting
+- Module version bumped to 1.4.1
+
 ### 1.4.0
 - Added `TagPrefix` column to `Get-CustomDetectionIds` output to show the prefix from description tags (e.g., `CSOC` from `[CSOC:uuid]`)
 - Improved test reliability by clearing `DetectionIdsCache` within module scope
