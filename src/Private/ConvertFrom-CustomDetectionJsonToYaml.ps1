@@ -137,7 +137,8 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         $customDetails = [ordered]@{}
         foreach ($key in $customDetailsSource.Keys) {
             if (Test-CustomDetectionValue $customDetailsSource[$key]) {
-                $customDetails[[string]$key] = "$($customDetailsSource[$key])"
+                # The value keeps its type so the deploy-side validation can reject one that is not a string
+                $customDetails[[string]$key] = $customDetailsSource[$key]
             }
         }
         if ($customDetails.Count -gt 0) {
@@ -160,7 +161,8 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         }
     }
     if ($deviceGroups.Count -gt 0) {
-        $yamlObj['organizationalScope'] = [object[]]@($deviceGroups | ForEach-Object { "$_" })
+        # Entries keep their type so the deploy-side validation can reject a name that is not a string
+        $yamlObj['organizationalScope'] = [object[]]$deviceGroups
     }
 
     $automatedActionsSource = Get-CustomDetectionValue -Object $JsonObject -Path 'detectionAction.automatedActions'
