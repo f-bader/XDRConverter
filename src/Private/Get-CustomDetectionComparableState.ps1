@@ -29,8 +29,10 @@ function Get-CustomDetectionComparableState {
         }
         if ($Value -isnot [string] -and $Value -is [System.Collections.IEnumerable]) {
             $items = @($Value | ForEach-Object { ConvertTo-SortedObject -Value $_ })
-            $sortedItems = @($items | Sort-Object -Property { $_ | ConvertTo-Json -Compress -Depth 10 })
-            return , $sortedItems
+            # Ordinal, so items that differ only by case never tie. The casts select the non-generic overload, the one that reorders the items
+            $keys = [string[]]@($items | ForEach-Object { ConvertTo-Json -InputObject $_ -Compress -Depth 10 })
+            [Array]::Sort([Array]$keys, [Array]$items, [System.Collections.IComparer][System.StringComparer]::Ordinal)
+            return , $items
         }
         return $Value
     }

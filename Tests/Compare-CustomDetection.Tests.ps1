@@ -175,6 +175,17 @@ Describe 'Compare-CustomDetection' {
         }
     }
 
+    It 'Ignores the order of <Name> that differ only by case' -ForEach @(
+        @{ Name = 'entity mappings'; Path = 'detectionAction.alertTemplate.entityMappings'; Key = 'hosts'; Items = @(@{ deviceIdColumn = 'DeviceId' }, @{ deviceIdColumn = 'deviceid' }) }
+        @{ Name = 'automated actions'; Path = 'detectionAction.automatedActions'; Key = 'isolateDevices'; Items = @(@{ deviceIdColumn = 'DeviceId'; isolationType = 'full' }, @{ deviceIdColumn = 'deviceid'; isolationType = 'full' }) }
+    ) {
+        $local = New-LocalBody -Overrides @{ $Path = @{ $Key = $Items } }
+        $remote = New-LocalBody -Overrides @{ $Path = @{ $Key = @($Items[1], $Items[0]) } }
+        InModuleScope XDRConverter -Parameters @{ Local = $local; Remote = $remote } {
+            Compare-CustomDetection -Local $Local -Remote $Remote | Should -Be $false
+        }
+    }
+
     It 'Warns instead of reporting a change when the file has no customDetails but the rule does' {
         $local = New-LocalBody
         $remote = New-RemoteRule

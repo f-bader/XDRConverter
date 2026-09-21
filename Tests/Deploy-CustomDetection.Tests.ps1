@@ -181,6 +181,58 @@ queryText: DeviceEvents | where ActionType == "Test"
             { Deploy-CustomDetection -InputFile $tempFile -Confirm:$false } | Should -Throw '*aadUserIdColumn*'
         }
 
+        It 'Should reject an array-valued custom detail from JSON input before any request' {
+            $testJson = @"
+{
+    "id": "rule-81fb771a-c57e-41b8-9905-63dbf267c13f",
+    "displayName": "TEST-ArrayCustomDetail",
+    "status": "disabled",
+    "detectionAction": {
+        "alertTemplate": {
+            "title": "Test",
+            "description": "Test",
+            "severity": "informational",
+            "tactics": [{ "tactic": "Execution" }],
+            "customDetails": { "Bad": ["First", "Second"] }
+        }
+    },
+    "queryCondition": { "queryText": "DeviceEvents | take 0" },
+    "schedule": { "frequency": "PT1H" }
+}
+"@
+            $tempFile = Join-Path TestDrive: 'array-custom-detail.json'
+            $testJson | Out-File -FilePath $tempFile -Encoding UTF8
+
+            { Deploy-CustomDetection -InputFile $tempFile -Confirm:$false } | Should -Throw "*customDetails entry 'Bad'*"
+            Should -Not -Invoke Invoke-MgGraphRequest -ModuleName XDRConverter
+        }
+
+        It 'Should reject a numeric device group from JSON input before any request' {
+            $testJson = @"
+{
+    "id": "rule-81fb771a-c57e-41b8-9905-63dbf267c13f",
+    "displayName": "TEST-NumericDeviceGroup",
+    "status": "disabled",
+    "detectionAction": {
+        "alertTemplate": {
+            "title": "Test",
+            "description": "Test",
+            "severity": "informational",
+            "tactics": [{ "tactic": "Execution" }]
+        },
+        "organizationalScope": { "deviceGroups": [123] }
+    },
+    "queryCondition": { "queryText": "DeviceEvents | take 0" },
+    "schedule": { "frequency": "PT1H" }
+}
+"@
+            $tempFile = Join-Path TestDrive: 'numeric-device-group.json'
+            $testJson | Out-File -FilePath $tempFile -Encoding UTF8
+
+            { Deploy-CustomDetection -InputFile $tempFile -Confirm:$false } | Should -Throw "*organizationalScope entry '123'*"
+            Should -Not -Invoke Invoke-MgGraphRequest -ModuleName XDRConverter
+        }
+
         It 'Should drop an incomplete account mapping from JSON input when -SkipIdentifierValidation is set' {
             $testJson = @"
 {
