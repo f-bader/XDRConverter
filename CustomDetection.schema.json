@@ -4,37 +4,82 @@
     "type": "object",
     "description": "Schema for Microsoft XDR Custom Detection YAML templates used for automated deployment",
     "additionalProperties": false,
-    "properties": {
-        "id": {
+    "definitions": {
+        "uuid": {
             "type": "string",
             "format": "uuid",
-            "description": "A unique UUID used to globally identify the custom detection rule",
             "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "columnName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Name of the query result column"
+        }
+    },
+    "properties": {
+        "guid": {
+            "$ref": "#/definitions/uuid",
+            "description": "A unique UUID that identifies the rule in its source files. New rules get the rule id rule-<guid> and the guid also travels in the alert description tag"
+        },
+        "id": {
+            "type": "string",
+            "pattern": "^(rule-)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "Alias of guid, with or without the rule- prefix. A file that carries both with different values is rejected on conversion"
+        },
+        "detectorId": {
+            "$ref": "#/definitions/uuid",
+            "description": "Assigned by the API and written by the YAML export for reference. A value in the file is sent back unchanged"
         },
         "ruleName": {
             "type": "string",
-            "description": "Name of the custom detection rule",
-            "pattern": ""
+            "description": "Name of the custom detection rule"
+        },
+        "description": {
+            "type": "string",
+            "description": "Optional description of the rule itself, shown in the portal rule list"
         },
         "isEnabled": {
             "type": "boolean",
-            "description": "Set to true. Legacy field as the global metadata will decide if the rule is enabled or not",
+            "description": "Legacy switch. true maps to status enabled, false to status disabled. Ignored when status is present",
             "default": true
+        },
+        "status": {
+            "type": "string",
+            "description": "Rule status. Wins over isEnabled when both are present",
+            "enum": [
+                "enabled",
+                "disabled",
+                "autoDisabled"
+            ]
         },
         "alertTitle": {
             "type": "string",
-            "description": "Title of the alert that will be generated",
-            "pattern": ""
+            "description": "Title of the alert that will be generated"
         },
         "frequency": {
-            "type": "string",
-            "description": "Frequency of rule execution. 0 = NRT (Near Real Time), other values in hours",
-            "enum": [
-                "0",
-                "1H",
-                "3H",
-                "12H",
-                "24H"
+            "description": "Run frequency. Legacy tokens 0, 1H, 3H, 12H and 24H are accepted and translated to ISO 8601 durations",
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "0",
+                        "1H",
+                        "3H",
+                        "12H",
+                        "24H"
+                    ]
+                },
+                {
+                    "type": "integer",
+                    "enum": [
+                        0
+                    ]
+                },
+                {
+                    "type": "string",
+                    "pattern": "^P(?=\\d|T\\d)(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+(?:\\.\\d+)?S)?)?$",
+                    "description": "ISO 8601 duration of days, hours, minutes and seconds such as PT0S, PT1H, PT3H, PT12H or P1D. Normalised to the form the API stores"
+                }
             ]
         },
         "alertSeverity": {
@@ -57,7 +102,7 @@
         },
         "alertCategory": {
             "type": "string",
-            "description": "Category of the alert, same options as the dropdown in the UI. Use camel case, no spaces",
+            "description": "Legacy alert category. Becomes the single tactic. Ignored when tactics is present",
             "enum": [
                 "CredentialAccess",
                 "DefenseEvasion",
@@ -71,12 +116,13 @@
                 "PrivilegeEscalation",
                 "Collection",
                 "CommandAndControl",
-                "SuspiciousActivity"
+                "SuspiciousActivity",
+                "Malware"
             ]
         },
         "mitreTechniques": {
-            "type": "array",
-            "description": "Array of MITRE ATT&CK technique IDs",
+            "type": ["array", "null"],
+            "description": "Legacy flat list of MITRE ATT&CK technique IDs. An empty key is accepted. Grouped under the alertCategory tactic. Ignored when tactics is present",
             "items": {
                 "type": "string",
                 "pattern": "^T\\d{4}(\\.\\d{3})?$",
@@ -84,18 +130,70 @@
             },
             "uniqueItems": true
         },
+        "tactics": {
+            "type": "array",
+            "description": "The tactic with its techniques. Wins over alertCategory and mitreTechniques. The API accepts one tactic per rule",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "tactic": {
+                        "type": "string",
+                        "description": "Tactic name, for example Execution"
+                    },
+                    "techniques": {
+                        "type": "array",
+                        "items": {
+                            "oneOf": [
+                                {
+                                    "type": "string",
+                                    "pattern": "^T\\d{4}(\\.\\d{3})?$"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "technique": {
+                                            "type": "string",
+                                            "pattern": "^T\\d{4}$"
+                                        },
+                                        "subTechniques": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "pattern": "^T\\d{4}\\.\\d{3}$"
+                                            },
+                                            "uniqueItems": true
+                                        }
+                                    },
+                                    "required": [
+                                        "technique"
+                                    ],
+                                    "additionalProperties": false
+                                }
+                            ]
+                        }
+                    }
+                },
+                "required": [
+                    "tactic"
+                ],
+                "additionalProperties": false
+            }
+        },
         "organizationalScope": {
             "type": "array",
-            "description": "Array of RBAC group names that define the organizational scope",
+            "description": "Device group names the rule applies to. An empty list means all devices",
             "items": {
                 "type": "string",
-                "description": "RBAC group name"
+                "minLength": 1,
+                "description": "Device group name"
             },
             "uniqueItems": true
         },
         "impactedEntities": {
             "type": "array",
-            "description": "Array of entities that are impacted by this detection",
+            "description": "Legacy entity list. Translated to entityMappings. Ignored when entityMappings is present",
             "items": {
                 "type": "object",
                 "properties": {
@@ -104,9 +202,10 @@
                         "description": "Type of the impacted entity",
                         "enum": [
                             "Machine",
+                            "Device",
                             "User",
-                            "Mailbox",
                             "Account",
+                            "Mailbox",
                             "IP",
                             "URL",
                             "FileHash",
@@ -127,26 +226,306 @@
                 "additionalProperties": false
             }
         },
+        "entityMappings": {
+            "type": "object",
+            "description": "Query columns that identify the alert entities, keyed by entity collection",
+            "additionalProperties": false,
+            "properties": {
+                "accounts": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "aadUserIdColumn": { "$ref": "#/definitions/columnName" },
+                                "dnsDomainColumn": { "$ref": "#/definitions/columnName" },
+                                "nameColumn": { "$ref": "#/definitions/columnName" },
+                                "ntDomainColumn": { "$ref": "#/definitions/columnName" },
+                                "sidColumn": { "$ref": "#/definitions/columnName" },
+                                "upnColumn": { "$ref": "#/definitions/columnName" },
+                                "upnSuffixColumn": { "$ref": "#/definitions/columnName" }
+                        },
+                        "anyOf": [
+                            { "required": [ "aadUserIdColumn" ] },
+                            { "required": [ "sidColumn" ] },
+                            { "required": [ "upnColumn" ] },
+                            { "required": [ "nameColumn", "ntDomainColumn" ] },
+                            { "required": [ "nameColumn", "dnsDomainColumn" ] },
+                            { "required": [ "nameColumn", "upnSuffixColumn" ] }
+                        ]
+                    },
+                    "description": "Columns: aadUserIdColumn, dnsDomainColumn, nameColumn, ntDomainColumn, sidColumn, upnColumn, upnSuffixColumn. An account needs a key column, or a name column together with a domain column"
+                },
+                "amazonResources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "amazonResourceIdColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: amazonResourceIdColumn"
+                },
+                "azureResources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "resourceIdColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: resourceIdColumn"
+                },
+                "cloudApplications": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "appIdColumn": { "$ref": "#/definitions/columnName" },
+                                "nameColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: appIdColumn, nameColumn"
+                },
+                "dns": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "domainNameColumn": { "$ref": "#/definitions/columnName" },
+                                "hostIpAddressColumn": { "$ref": "#/definitions/columnName" },
+                                "serverIpColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: domainNameColumn, hostIpAddressColumn, serverIpColumn"
+                },
+                "files": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "nameColumn": { "$ref": "#/definitions/columnName" },
+                                "sha1Column": { "$ref": "#/definitions/columnName" },
+                                "sha256Column": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: nameColumn, sha1Column, sha256Column"
+                },
+                "googleCloudResources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "fullResourceNameColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: fullResourceNameColumn"
+                },
+                "hosts": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "deviceIdColumn": { "$ref": "#/definitions/columnName" },
+                                "dnsDomainColumn": { "$ref": "#/definitions/columnName" },
+                                "nameColumn": { "$ref": "#/definitions/columnName" },
+                                "netBiosNameColumn": { "$ref": "#/definitions/columnName" },
+                                "ntDomainColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: deviceIdColumn, dnsDomainColumn, nameColumn, netBiosNameColumn, ntDomainColumn"
+                },
+                "ips": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "addressColumn": { "$ref": "#/definitions/columnName" },
+                                "scopeColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: addressColumn, scopeColumn"
+                },
+                "mailboxes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "primaryAddressColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: primaryAddressColumn"
+                },
+                "mailClusters": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "queryColumn": { "$ref": "#/definitions/columnName" },
+                                "sourceColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: queryColumn, sourceColumn"
+                },
+                "mailMessages": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "networkMessageIdColumn": { "$ref": "#/definitions/columnName" },
+                                "recipientColumn": { "$ref": "#/definitions/columnName" },
+                                "senderColumn": { "$ref": "#/definitions/columnName" },
+                                "subjectColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: networkMessageIdColumn, recipientColumn, senderColumn, subjectColumn"
+                },
+                "oAuthApplications": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "oAuthAppIdColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: oAuthAppIdColumn"
+                },
+                "processes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "sha1Column": { "$ref": "#/definitions/columnName" },
+                                "sha256Column": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: sha1Column, sha256Column"
+                },
+                "registryValues": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "keyColumn": { "$ref": "#/definitions/columnName" },
+                                "valueNameColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: keyColumn, valueNameColumn"
+                },
+                "securityGroups": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "distinguishedNameColumn": { "$ref": "#/definitions/columnName" },
+                                "objectIdColumn": { "$ref": "#/definitions/columnName" },
+                                "sidColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: distinguishedNameColumn, objectIdColumn, sidColumn"
+                },
+                "urls": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": false,
+                        "properties": {
+                                "addressColumn": { "$ref": "#/definitions/columnName" }
+                        }
+                    },
+                    "description": "Columns: addressColumn"
+                }
+            }
+        },
+        "customDetails": {
+            "type": "object",
+            "description": "Custom details attached to the alert, mapping a detail name to a query column",
+            "minProperties": 1,
+            "maxProperties": 20,
+            "additionalProperties": {
+                "$ref": "#/definitions/columnName"
+            }
+        },
         "actions": {
             "type": "array",
-            "description": "Array of automated response actions to take when the detection triggers",
+            "description": "Automated response actions to take when the detection triggers",
             "items": {
                 "type": "object",
                 "properties": {
                     "actionType": {
                         "type": "string",
-                        "description": "Type of action to perform",
+                        "description": "Type of action to perform. Listed in the casing the documentation uses, and the converter also accepts other casings",
                         "enum": [
                             "IsolateMachine",
                             "CollectInvestigationPackage",
                             "RunAntivirusScan",
                             "InitiateInvestigation",
-                            "RestrictAppExecution"
+                            "RestrictAppExecution",
+                            "StopAndQuarantineFile",
+                            "AllowFile",
+                            "BlockFile",
+                            "DisableUser",
+                            "ForceUserPasswordReset",
+                            "MarkUserAsCompromised",
+                            "HardDeleteEmail",
+                            "SoftDeleteEmail",
+                            "MoveEmailToInbox",
+                            "MoveEmailToJunk",
+                            "MoveEmailToDeletedItems"
                         ]
                     },
                     "additionalFields": {
-                        "type": "object",
-                        "description": "Additional configuration fields specific to the action type",
+                        "type": [ "object", "null" ],
+                        "description": "Column mapping and options for the action. Defaults apply when the key is omitted or carries no value. Field names are listed in the casing the request carries, and the converter also accepts other casings",
                         "properties": {
                             "isolationType": {
                                 "type": "string",
@@ -156,15 +535,143 @@
                                     "Selective"
                                 ],
                                 "default": "Full"
+                            },
+                            "deviceIdColumn": {
+                                "$ref": "#/definitions/columnName"
+                            },
+                            "sha1Column": {
+                                "$ref": "#/definitions/columnName"
+                            },
+                            "sha256Column": {
+                                "$ref": "#/definitions/columnName"
+                            },
+                            "deviceGroupNames": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "accountSidColumn": {
+                                "$ref": "#/definitions/columnName"
+                            },
+                            "accountObjectIdColumn": {
+                                "$ref": "#/definitions/columnName"
+                            },
+                            "networkMessageIdColumn": {
+                                "$ref": "#/definitions/columnName"
+                            },
+                            "recipientColumn": {
+                                "$ref": "#/definitions/columnName"
                             }
                         },
-                        "additionalProperties": true
+                        "additionalProperties": false
                     }
                 },
                 "required": [
                     "actionType"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "allOf": [
+                    {
+                        "if": {
+                            "required": [ "actionType" ],
+                            "properties": { "actionType": { "enum": [ "IsolateMachine" ] } }
+                        },
+                        "then": {
+                            "properties": {
+                                "additionalFields": {
+                                    "properties": { "deviceIdColumn": {}, "isolationType": {} },
+                                    "additionalProperties": false
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "if": {
+                            "required": [ "actionType" ],
+                            "properties": { "actionType": { "enum": [ "CollectInvestigationPackage", "RunAntivirusScan", "InitiateInvestigation", "RestrictAppExecution" ] } }
+                        },
+                        "then": {
+                            "properties": {
+                                "additionalFields": {
+                                    "properties": { "deviceIdColumn": {} },
+                                    "additionalProperties": false
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "if": {
+                            "required": [ "actionType" ],
+                            "properties": { "actionType": { "enum": [ "StopAndQuarantineFile" ] } }
+                        },
+                        "then": {
+                            "properties": {
+                                "additionalFields": {
+                                    "properties": { "deviceIdColumn": {}, "sha1Column": {} },
+                                    "additionalProperties": false
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "if": {
+                            "required": [ "actionType" ],
+                            "properties": { "actionType": { "enum": [ "AllowFile", "BlockFile" ] } }
+                        },
+                        "then": {
+                            "properties": {
+                                "additionalFields": {
+                                    "properties": { "sha1Column": {}, "sha256Column": {}, "deviceGroupNames": {} },
+                                    "additionalProperties": false,
+                                    "not": { "required": [ "sha1Column", "sha256Column" ] }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "if": {
+                            "required": [ "actionType" ],
+                            "properties": { "actionType": { "enum": [ "DisableUser", "ForceUserPasswordReset" ] } }
+                        },
+                        "then": {
+                            "properties": {
+                                "additionalFields": {
+                                    "properties": { "accountSidColumn": {} },
+                                    "additionalProperties": false
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "if": {
+                            "required": [ "actionType" ],
+                            "properties": { "actionType": { "enum": [ "MarkUserAsCompromised" ] } }
+                        },
+                        "then": {
+                            "properties": {
+                                "additionalFields": {
+                                    "properties": { "accountObjectIdColumn": {} },
+                                    "additionalProperties": false
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "if": {
+                            "required": [ "actionType" ],
+                            "properties": { "actionType": { "enum": [ "HardDeleteEmail", "SoftDeleteEmail", "MoveEmailToInbox", "MoveEmailToJunk", "MoveEmailToDeletedItems" ] } }
+                        },
+                        "then": {
+                            "properties": {
+                                "additionalFields": {
+                                    "properties": { "networkMessageIdColumn": {}, "recipientColumn": {} },
+                                    "additionalProperties": false
+                                }
+                            }
+                        }
+                    }
+                ]
             }
         },
         "queryText": {
@@ -173,13 +680,41 @@
         }
     },
     "required": [
-        "guid",
         "ruleName",
         "alertTitle",
         "frequency",
         "alertSeverity",
         "alertDescription",
-        "alertCategory",
         "queryText"
+    ],
+    "allOf": [
+        {
+            "anyOf": [
+                {
+                    "required": [
+                        "guid"
+                    ]
+                },
+                {
+                    "required": [
+                        "id"
+                    ]
+                }
+            ]
+        },
+        {
+            "anyOf": [
+                {
+                    "required": [
+                        "alertCategory"
+                    ]
+                },
+                {
+                    "required": [
+                        "tactics"
+                    ]
+                }
+            ]
+        }
     ]
 }

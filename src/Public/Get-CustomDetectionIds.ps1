@@ -1,13 +1,14 @@
 function Get-CustomDetectionIds {
     <#
     .SYNOPSIS
-        Lists detection rule IDs with their detector IDs and description tags.
+        Lists detection rule IDs with their description tags.
 
     .DESCRIPTION
         Queries Microsoft Graph API to retrieve all detection rules and returns
-        their detection rule ID, detector ID, the UUID from the description
-        tag (if present), and the tag prefix (if present). Results are cached 
-        for the duration specified by CacheTtlMinutes (default: 60 minutes).
+        their detection rule ID, the detector ID the API assigned, the display
+        name, the UUID from the description tag (if present), and the tag prefix
+        (if present). Results are cached for the duration specified by
+        CacheTtlMinutes (default: 60 minutes).
 
     .PARAMETER CacheTtlMinutes
         How long (in minutes) to keep the cached result before re-querying the API.
@@ -19,7 +20,7 @@ function Get-CustomDetectionIds {
     .EXAMPLE
         Get-CustomDetectionIds
 
-        Returns a list of detection rule IDs and detector IDs (cached for 60 min).
+        Returns a list of detection rule IDs, display names and description tags (cached for 60 min).
 
     .EXAMPLE
         Get-CustomDetectionIds -Force
@@ -61,50 +62,46 @@ function Get-CustomDetectionIds {
             return $script:DetectionIdsCache.Data
         }
 
+        # After a timeout and a failed retry the list is not asked again for five minutes, so a run does not pay the timeout once per rule
+        $failedAt = $script:DetectionIdsCache.FailedAt
+        if (-not $Force -and $failedAt -and ([datetime]::UtcNow - $failedAt) -lt [timespan]::FromMinutes(5)) {
+            throw "The rule list is unavailable since $($failedAt.ToString('HH:mm:ss')) UTC and is asked again five minutes later."
+        }
+
         try {
-            # Query the Microsoft Graph API with pagination support
-            $uri = "https://graph.microsoft.com/beta/security/rules/detectionRules?`$select=id,detectorId,detectionAction"
-            $allValues = [System.Collections.Generic.List[object]]::new()
+            # Query the Microsoft Graph API with pagination support. The projection names the properties the lookups read
+            $listUri = 'https://graph.microsoft.com/beta/security/rules/detectionRules?$select=id,detectorId,displayName,detectionAction'
+            $retried = $false
 
-            do {
-                $response = Invoke-MgGraphRequestWithRetry -Method GET -Uri $uri
-                if ($response.value) {
-                    $allValues.AddRange([object[]]$response.value)
-                }
-                $uri = $response.'@odata.nextLink'
-            } while ($uri)
-
-            if ($allValues.Count -eq 0) {
-                $result = @()
-            } else {
-                $uuidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
-                $tagPattern = "\[(?:([^:\]]+):)?($uuidPattern)\]"
-
-                $result = $allValues | ForEach-Object {
-                    $descriptionTag = $null
-                    $tagPrefix = $null
-                    $desc = $_.detectionAction.alertTemplate.description
-                    if ($desc -and $desc -match $tagPattern) {
-                        if ($null -ne $Matches[1]) {
-                            $tagPrefix = $Matches[1]
-                        } else {
-                            $tagPrefix = $null
+            while ($true) {
+                try {
+                    $allValues = [System.Collections.Generic.List[object]]::new()
+                    $uri = $listUri
+                    do {
+                        $response = Invoke-MgGraphRequestWithRetry -Method GET -Uri $uri
+                        if ($response.value) {
+                            $allValues.AddRange([object[]]$response.value)
                         }
-                        $descriptionTag = $Matches[2]
+                        $uri = $response.'@odata.nextLink'
+                    } while ($uri)
+                    break
+                } catch {
+                    if (-not (Test-CustomDetectionListFailure -ErrorRecord $_)) { throw }
+                    if ($retried) {
+                        $script:DetectionIdsCache.FailedAt = [datetime]::UtcNow
+                        throw
                     }
-
-                    [PSCustomObject]@{
-                        Id             = $_.id
-                        DetectorId     = $_.detectorId
-                        DescriptionTag = $descriptionTag
-                        TagPrefix      = $tagPrefix
-                    }
+                    $retried = $true
+                    Write-Warning 'The rule list timed out. It is asked once more.'
                 }
             }
+
+            $result = @($allValues | ForEach-Object { ConvertTo-CustomDetectionIdEntry -Rule $_ })
 
             # Update the cache
             $script:DetectionIdsCache.Data = $result
             $script:DetectionIdsCache.ExpiresAt = [datetime]::UtcNow.AddMinutes($CacheTtlMinutes)
+            $script:DetectionIdsCache.FailedAt = $null
 
             return $result
         } catch {

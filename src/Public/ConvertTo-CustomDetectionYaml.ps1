@@ -24,7 +24,9 @@ function ConvertTo-CustomDetectionYaml {
         Cannot be combined with -OutputFile or -UseIdAsFilename.
 
     .PARAMETER UseIdAsFilename
-        Use the rule's detectorId (GUID) as the output filename (with .yaml extension).
+        Use the rule's guid as the output filename (with .yaml extension). Taken from the
+        description tag, then a UUID rule id, then the guid after the rule- prefix, then
+        the detector ID the API assigned.
         The file is written to -OutputFolder (or the user's temp directory if not specified).
         Cannot be combined with -OutputFile or -UseDisplayNameAsFilename.
 
@@ -34,6 +36,10 @@ function ConvertTo-CustomDetectionYaml {
 
     .PARAMETER Enabled
         Optional. Set the isEnabled property to this value (true or false).
+
+    .PARAMETER LegacyKeys
+        Emit the legacy YAML keys instead of the current ones. Values the legacy keys cannot
+        express are kept in their current form or dropped, each with a warning.
 
     .PARAMETER Severity
         Optional. Override the alert severity. Valid values: Informational, Low, Medium, High.
@@ -58,7 +64,7 @@ function ConvertTo-CustomDetectionYaml {
     .EXAMPLE
         Get-CustomDetection | ConvertTo-CustomDetectionYaml -UseIdAsFilename
 
-        Writes each rule to a YAML file named after its detectorId in the user's temp directory.
+        Writes each rule to a YAML file named after its guid in the user's temp directory.
     #>
     [CmdletBinding(DefaultParameterSetName = 'File')]
     [OutputType([string])]
@@ -80,7 +86,7 @@ function ConvertTo-CustomDetectionYaml {
         [Parameter(Mandatory, ParameterSetName = 'ObjectByDisplayName', HelpMessage = 'Use the display name as the output filename')]
         [switch]$UseDisplayNameAsFilename,
 
-        [Parameter(Mandatory, ParameterSetName = 'ObjectById', HelpMessage = 'Use the detectorId as the output filename')]
+        [Parameter(Mandatory, ParameterSetName = 'ObjectById', HelpMessage = 'Use the guid as the output filename')]
         [switch]$UseIdAsFilename,
 
         [Parameter(ParameterSetName = 'ObjectByDisplayName', HelpMessage = 'Folder to write the output file to')]
@@ -92,7 +98,10 @@ function ConvertTo-CustomDetectionYaml {
 
         [Parameter(HelpMessage = 'Set the severity level (Informational, Low, Medium, High)')]
         [ValidateSet('Informational', 'Low', 'Medium', 'High')]
-        [string]$Severity
+        [string]$Severity,
+
+        [Parameter(HelpMessage = 'Emit the legacy YAML keys (alertCategory, mitreTechniques, impactedEntities, period-style frequency)')]
+        [switch]$LegacyKeys
     )
 
     process {
@@ -106,19 +115,7 @@ function ConvertTo-CustomDetectionYaml {
 
             # Determine output file path when using naming switches
             if ($UseDisplayNameAsFilename -or $UseIdAsFilename) {
-                $folder = if ($OutputFolder) { $OutputFolder } else { [System.IO.Path]::GetTempPath() }
-                if (-not (Test-Path $folder)) {
-                    New-Item -ItemType Directory -Path $folder -Force | Out-Null
-                }
-                if ($UseDisplayNameAsFilename) {
-                    # Sanitize display name for use as a filename
-                    $safeName = $jsonObj.displayName -replace '[\\/:*?"<>|]', '_'
-                    # Convert whitespace-separated words to CamelCase
-                    $safeName = ($safeName -split '\s+' | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ''
-                    $OutputFile = Join-Path $folder "$safeName.yaml"
-                } else {
-                    $OutputFile = Join-Path $folder "$($jsonObj.detectorId).yaml"
-                }
+                $OutputFile = Resolve-CustomDetectionOutputFile -Rule $jsonObj -Extension '.yaml' -OutputFolder $OutputFolder -UseDisplayName:$UseDisplayNameAsFilename
             }
 
             # Prepare parameters for conversion
@@ -136,6 +133,10 @@ function ConvertTo-CustomDetectionYaml {
 
             # Convert to YAML object
             $yamlObj = ConvertFrom-CustomDetectionJsonToYaml @convertParams
+
+            if ($LegacyKeys) {
+                $yamlObj = ConvertTo-CustomDetectionLegacyYaml -YamlObject $yamlObj
+            }
 
             # Convert to YAML string (inline: single line operation)
             $yamlString = $yamlObj | ConvertTo-Yaml -OutFile $null

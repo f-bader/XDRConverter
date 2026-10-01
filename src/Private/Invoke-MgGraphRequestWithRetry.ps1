@@ -45,7 +45,7 @@ function Invoke-MgGraphRequestWithRetry {
                 Uri    = $Uri
             }
             if ($PSBoundParameters.ContainsKey('Body')) {
-                $params['Body'] = $Body
+                $params['Body'] = ConvertTo-CustomDetectionPlainObject -InputObject $Body
             }
             return Invoke-MgGraphRequest @params
         } catch {

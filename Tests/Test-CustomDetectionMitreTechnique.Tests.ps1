@@ -187,6 +187,75 @@ queryText: DeviceEvents | take 1
         }
     }
 
+    Context 'Tactics Input' {
+
+        It 'Should validate techniques listed under tactics' {
+            $obj = [PSCustomObject]@{
+                tactics = @(
+                    @{ tactic = 'DefenseEvasion'; techniques = @(@{ technique = 'T1070'; subTechniques = @('T1070.001') }) }
+                )
+            }
+            $result = $obj | Test-CustomDetectionMitreTechnique
+            $result.IsValid | Should -Be $true
+            $result.Category | Should -Be 'DefenseEvasion'
+            $result.ValidTechniques | Should -Be @('T1070', 'T1070.001')
+        }
+
+        It 'Should report an unsupported parent technique that carries valid sub-techniques' {
+            $obj = [PSCustomObject]@{ tactics = @(@{ tactic = 'Execution'; techniques = @(@{ technique = 'T9999'; subTechniques = @('T1059.001') }) }) }
+            $result = $obj | Test-CustomDetectionMitreTechnique -WarningAction SilentlyContinue
+            $result.IsValid | Should -Be $false
+            $result.InvalidTechniques | Should -Be @('T9999')
+            $result.ValidTechniques | Should -Be @('T1059.001')
+        }
+
+        It 'Should validate the parent technique when no sub-techniques are listed' {
+            $obj = [PSCustomObject]@{ tactics = @(@{ tactic = 'Execution'; techniques = @('T1059') }) }
+            $result = $obj | Test-CustomDetectionMitreTechnique
+            $result.IsValid | Should -Be $true
+            $result.ValidTechniques | Should -Be @('T1059')
+        }
+
+        It 'Should report an unsupported sub-technique under a tactic' {
+            $obj = [PSCustomObject]@{ tactics = @(@{ tactic = 'Exfiltration'; techniques = @('T1059.001') }) }
+            $result = $obj | Test-CustomDetectionMitreTechnique -WarningAction SilentlyContinue
+            $result.IsValid | Should -Be $false
+            $result.InvalidTechniques | Should -Be @('T1059.001')
+        }
+
+        It 'Should combine results across several tactics' {
+            $obj = [PSCustomObject]@{
+                tactics = @(
+                    @{ tactic = 'Execution'; techniques = @('T1059') }
+                    @{ tactic = 'Exfiltration'; techniques = @('T1059') }
+                )
+            }
+            $result = $obj | Test-CustomDetectionMitreTechnique -WarningAction SilentlyContinue
+            $result.IsValid | Should -Be $false
+            $result.Category | Should -Be 'Execution, Exfiltration'
+            $result.ValidTechniques | Should -Be @('T1059')
+            $result.InvalidTechniques | Should -Be @('T1059')
+        }
+
+        It 'Should prefer tactics over alertCategory and mitreTechniques' {
+            $obj = [PSCustomObject]@{
+                alertCategory   = 'Exfiltration'
+                mitreTechniques = @('T1059.001')
+                tactics         = @(@{ tactic = 'Execution'; techniques = @('T1059.001') })
+            }
+            $result = $obj | Test-CustomDetectionMitreTechnique
+            $result.IsValid | Should -Be $true
+            $result.Category | Should -Be 'Execution'
+        }
+
+        It 'Should skip a tactic that is not in the XDR mapping with a warning' {
+            $obj = [PSCustomObject]@{ tactics = @(@{ tactic = 'SuspiciousActivity'; techniques = @('T1059.001') }) }
+            $result = $obj | Test-CustomDetectionMitreTechnique -WarningVariable w -WarningAction SilentlyContinue
+            $result.IsValid | Should -Be $true
+            $w | Should -Not -BeNullOrEmpty
+        }
+    }
+
     Context 'Pipeline Input' {
 
         It 'Should accept multiple objects from the pipeline' {

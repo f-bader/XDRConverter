@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XDRConverter.psm1'
-    ModuleVersion     = '1.4.1'
+    ModuleVersion     = '2.0.0'
     GUID              = '81fb771a-c57e-41b8-9905-63dbf267c13f'
     Author            = 'Fabian Bader'
     CompanyName       = ''
@@ -26,7 +26,7 @@
             Tags         = @('XDR', 'Defender', 'Detection', 'YAML', 'JSON', 'Security', 'MITRE')
             LicenseUri   = ''
             ProjectUri   = 'https://github.com/f-bader/XDRConverter'
-            ReleaseNotes = 'Version 1.4.1: Include Graph API error details in deployment failure messages.'
+            ReleaseNotes = 'Version 2.0.0: Move to the current Graph detectionRule schema (status, frequency, tactics, entityMappings, automatedActions). Legacy YAML keys are still accepted and translated. JSON to YAML now emits the current keys.'
         }
     }
 }

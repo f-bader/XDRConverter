@@ -37,15 +37,13 @@ function Get-CustomDetectionIdByDescriptionTag {
             # Leverage the cached detection IDs list
             $detectionIds = Get-CustomDetectionIds
 
-            # Find the detection rule with the matching description tag
-            $detectionRule = $detectionIds | Where-Object { $_.DescriptionTag -eq $DescriptionTag }
-
-            if ($detectionRule) {
-                return $detectionRule.Id
-            } else {
-                Write-Warning "No detection rule found with description tag: $DescriptionTag"
-                return $null
+            $ruleId = Get-CustomDetectionTaggedId -Rule @($detectionIds) -DescriptionTag $DescriptionTag
+            if ($ruleId) {
+                return $ruleId
             }
+
+            Write-Warning "No detection rule found with description tag: $DescriptionTag"
+            return $null
         } catch {
             Write-Error "Error querying Microsoft Graph API: $($_.Exception.Message)"
             throw

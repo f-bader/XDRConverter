@@ -8,14 +8,19 @@ function Deploy-CustomDetection {
         title prefix, and enabled state, then deploys it to Microsoft Defender XDR via
         the Microsoft Graph API.
 
-        By default the YAML/JSON guid (detectorId) is appended to the description as
-        "[<UUID>]". Use -DescriptionTagPrefix to add a prefix (e.g. "[PREFIX:<UUID>]")
-        or -NoDescriptionTag to suppress the tag entirely.
+        By default the YAML/JSON guid is appended to the description as "[<UUID>]".
+        Use -DescriptionTagPrefix to add a prefix (e.g. "[PREFIX:<UUID>]") or
+        -NoDescriptionTag to suppress the tag entirely.
 
-        The function automatically detects whether the rule already exists (by detectorId
-        or by scanning descriptions for the UUID tag) and issues a PATCH (update) instead
-        of a POST (create). Before updating it compares the local rule against the remote
-        version and skips the call when nothing changed.
+        New rules are sent with the id "rule-<guid>", and the guid also travels
+        in the description tag. The API assigns an id when none is sent, whatever
+        the reference says, and rejects one that starts with a digit. The function finds an existing rule through that id, through the
+        tag, or, with -NoDescriptionTag, through the display name. When the rule
+        list carries none of them it asks for "rule-<guid>" directly, since the
+        list can lag behind a create or a delete. A found rule gets a
+        PATCH (update) instead of a POST (create). Before
+        updating it compares the local rule against the remote version and skips the
+        call when nothing changed.
 
     .PARAMETER InputFile
         Path to the input YAML (.yaml/.yml) or JSON (.json) file.
@@ -28,10 +33,11 @@ function Deploy-CustomDetection {
         Example: -TitlePrefix '[PREFIX] ' produces "[PREFIX] My Rule".
 
     .PARAMETER Disabled
-        Deploy the rule with isEnabled = $false regardless of the file value.
+        Deploy the rule with status = disabled regardless of the file value.
 
     .PARAMETER NoDescriptionTag
-        When set, the "[<UUID>]" tag is NOT appended to the description.
+        When set, the "[<UUID>]" tag is NOT appended to the description. A rule
+        that does not carry the rule-<guid> id is then matched by its display name alone.
 
     .PARAMETER DescriptionTagPrefix
         Prefix placed before the UUID inside the tag, e.g. 'PREFIX' produces "[PREFIX:<UUID>]".
@@ -51,7 +57,7 @@ function Deploy-CustomDetection {
 
     .PARAMETER SkipMitreTechniqueValidation
         Skip the pre-deployment check that verifies all listed MITRE ATT&CK techniques are supported
-        by XDR for the selected alert category. Use this to deploy rules that include techniques not
+        by XDR for each tactic. Use this to deploy rules that include techniques not
         yet reflected in the local XDR technique mapping.
 
     .PARAMETER WhatIf
@@ -140,30 +146,30 @@ function Deploy-CustomDetection {
         try {
             #region Load the file
             $extension = [System.IO.Path]::GetExtension($InputFile).ToLowerInvariant()
-            switch ($extension) {
+            $yamlObj = switch ($extension) {
                 { $_ -in '.yaml', '.yml' } {
-                    $yamlObj = Import-CustomDetectionYamlFile -FilePath $InputFile
-                    $convertParams = @{ YamlObject = $yamlObj }
-                    if ($SkipIdentifierValidation) {
-                        $convertParams['SkipIdentifierValidation'] = $true
-                    }
-                    $jsonObj = ConvertFrom-CustomDetectionYamlToJson @convertParams
+                    Import-CustomDetectionYamlFile -FilePath $InputFile
                 }
                 '.json' {
-                    $jsonObj = Import-CustomDetectionJsonFile -FilePath $InputFile
-                    # Ensure it's a mutable hashtable
-                    if ($jsonObj -isnot [hashtable]) {
-                        $jsonObj = $jsonObj | ConvertTo-Json -Depth 10 | ConvertFrom-Json -AsHashtable
-                    }
+                    # Normalise JSON input through the YAML shape so legacy files deploy with the current body
+                    $rawJson = Import-CustomDetectionJsonFile -FilePath $InputFile
+                    ConvertFrom-CustomDetectionJsonToYaml -JsonObject $rawJson -ValidateIdentifiers:(-not $SkipIdentifierValidation)
                 }
                 default {
                     throw "Unsupported file extension '$extension'. Use .yaml, .yml, or .json."
                 }
             }
 
-            $detectorId = $jsonObj.detectorId
+            $convertParams = @{ YamlObject = $yamlObj }
+            if ($SkipIdentifierValidation) {
+                $convertParams['SkipIdentifierValidation'] = $true
+            }
+            $jsonObj = ConvertFrom-CustomDetectionYamlToJson @convertParams
+
+            # The body carries the client id rule-<guid>. The bare guid is the tag and the lookup key
+            $detectorId = "$($jsonObj.id)" -replace '^rule-', ''
             if (-not $detectorId) {
-                throw "The input file does not contain a detectorId (guid). Cannot deploy."
+                throw "The input file does not contain a guid. Cannot deploy."
             }
             #endregion
 
@@ -209,21 +215,18 @@ function Deploy-CustomDetection {
 
             #region Validate MITRE technique coverage
             if (-not $SkipMitreTechniqueValidation) {
-                $mitreCheckObj = [PSCustomObject]@{
-                    alertCategory   = $jsonObj.detectionAction.alertTemplate.category
-                    mitreTechniques = $jsonObj.detectionAction.alertTemplate.mitreTechniques
-                }
-                $mitreResult = Test-CustomDetectionMitreTechnique -InputObject $mitreCheckObj -WarningAction SilentlyContinue
+                # YAML input is validated as written, so a listed parent counts and a derived one does not. JSON input is normalised first, so its derived parents are validated too
+                $mitreResult = Test-CustomDetectionMitreTechnique -InputObject $yamlObj
                 if (-not $mitreResult.IsValid) {
                     $invalidList = $mitreResult.InvalidTechniques -join ', '
-                    throw "MITRE technique(s) not supported by XDR for category '$($mitreCheckObj.alertCategory)': $invalidList. Use -SkipMitreTechniqueValidation to bypass this check."
+                    throw "MITRE technique(s) not supported by XDR for category '$($mitreResult.Category)': $invalidList. Use -SkipMitreTechniqueValidation to bypass this check."
                 }
             }
             #endregion
 
             #region Apply overrides
             if ($Disabled) {
-                $jsonObj.isEnabled = $false
+                $jsonObj.status = 'disabled'
             }
 
             if ($PSBoundParameters.ContainsKey('Severity')) {
@@ -263,37 +266,59 @@ function Deploy-CustomDetection {
             #endregion
 
             #region Discover existing rule
-            $existingRuleId = $null
             $existingRule = $null
+            $existingRuleId = $null
+            $listUnavailable = $false
 
-            # Try by detectorId first (cached)
-            $existingRuleId = Get-CustomDetectionIdByDetectorId -DetectorId $detectorId -ErrorAction SilentlyContinue
+            # The three lookups read the rule list. When it does not answer, the client id is the only lookup left
+            try {
+                # Try by rule id first (cached)
+                $existingRuleId = Get-CustomDetectionIdByDetectorId -DetectorId $detectorId -ErrorAction SilentlyContinue
 
-            # Fallback: scan all rules for UUID tag in description
+                # Fallback: scan all rules for UUID tag in description
+                if (-not $existingRuleId) {
+                    Write-Verbose "Guid '$detectorId' not found by ID lookup. Scanning descriptions for UUID tag..."
+                    $existingRuleId = Get-CustomDetectionIdByDescriptionTag -DescriptionTag $detectorId -WarningAction SilentlyContinue
+                    if ($existingRuleId) {
+                        Write-Verbose "Found matching detection by description tag: Rule Id '$existingRuleId'."
+                    } else {
+                        Write-Verbose "No existing rule carries the tag '$detectorId'."
+                    }
+                }
+
+                # A rule without the client id and without a tag can only be matched by name. The API keeps names unique
+                if (-not $existingRuleId -and $NoDescriptionTag) {
+                    $byName = Get-CustomDetectionIds | Where-Object { $_.DisplayName -eq $jsonObj.displayName } | Select-Object -First 1
+                    if ($byName) {
+                        $existingRuleId = $byName.Id
+                        Write-Warning "Rule '$($jsonObj.displayName)' was matched by its display name alone. Without the tag a renamed file creates a new rule and leaves this one behind."
+                    }
+                }
+            } catch {
+                if (-not (Test-CustomDetectionListFailure -ErrorRecord $_)) { throw }
+                $listUnavailable = $true
+                Write-Warning "The rule list did not answer. Rule '$($jsonObj.displayName)' is looked up by its client id only."
+            }
+            # The list can lag behind a create or a delete, so the client id is asked for directly before a create
             if (-not $existingRuleId) {
-                Write-Verbose "DetectorId '$detectorId' not found by ID lookup. Scanning descriptions for UUID tag..."
-                $existingRuleId = Get-CustomDetectionIdByDescriptionTag -DescriptionTag $detectorId
-                if ($existingRuleId) {
-                    Write-Verbose "Found matching detection by description tag: Rule Id '$existingRuleId'."
+                $byId = Get-CustomDetectionByClientId -Guid $detectorId
+                if ($byId) {
+                    $existingRuleId = $byId.id
+                    $existingRule = $byId
+                    Write-Verbose "Found the rule through its client id '$existingRuleId', which the list did not carry."
                 }
             }
 
-            # Fetch the full existing rule if we found one
-            if ($existingRuleId) {
-                $existingRule = Get-CustomDetection -DetectionId $existingRuleId
+            if (-not $existingRuleId -and $listUnavailable) {
+                throw "The rule list is unavailable and rule '$($jsonObj.displayName)' was not found by its client id. Nothing was created."
             }
-            #endregion
+            if (-not $existingRuleId) {
+                Write-Verbose "The rule will be created."
+            }
 
-            #region Flatten local rule for comparison
-            $localFlat = @{
-                displayName = $jsonObj.displayName
-                isEnabled   = $jsonObj.isEnabled
-                queryText   = $jsonObj.queryCondition.queryText
-                period      = [string]$jsonObj.schedule.period
-                title       = $jsonObj.detectionAction.alertTemplate.title
-                description = $jsonObj.detectionAction.alertTemplate.description
-                severity    = $jsonObj.detectionAction.alertTemplate.severity
-                category    = $jsonObj.detectionAction.alertTemplate.category
+            # Fetch the full existing rule if we found one
+            if ($existingRuleId -and -not $existingRule) {
+                $existingRule = Get-CustomDetection -DetectionId $existingRuleId
             }
             #endregion
 
@@ -302,7 +327,7 @@ function Deploy-CustomDetection {
 
             if ($existingRule) {
                 # Check for actual changes
-                $hasChanges = Compare-CustomDetection -Local $localFlat -Remote $existingRule
+                $hasChanges = Compare-CustomDetection -Local $jsonObj -Remote $existingRule
 
                 if (-not $hasChanges -and -not $Force) {
                     Write-Verbose "Rule '$ruleName' (Id: $existingRuleId) is up-to-date. Skipping update."
@@ -318,7 +343,8 @@ function Deploy-CustomDetection {
                 # Update existing rule via PATCH
                 if ($PSCmdlet.ShouldProcess("Rule '$ruleName' (Id: $existingRuleId)", 'Update detection rule')) {
                     $uri = "$baseUri/$existingRuleId"
-                    Invoke-MgGraphRequestWithRetry -Method PATCH -Uri $uri -Body $jsonObj | Out-Null
+                    $patchBody = Complete-CustomDetectionPatchBody -Body $jsonObj -Remote $existingRule
+                    Invoke-MgGraphRequestWithRetry -Method PATCH -Uri $uri -Body $patchBody | Out-Null
                     Write-Verbose "Updated rule '$ruleName' (Id: $existingRuleId)."
 
                     [PSCustomObject]@{
@@ -331,9 +357,13 @@ function Deploy-CustomDetection {
             } else {
                 # Create new rule via POST
                 if ($PSCmdlet.ShouldProcess("Rule '$ruleName'", 'Create detection rule')) {
+                    # The API assigns an id when none is sent and rejects one that starts with a digit, hence the prefixed client id in the body
                     $response = Invoke-MgGraphRequestWithRetry -Method POST -Uri $baseUri -Body $jsonObj
                     $newId = $response.id
-                    Write-Verbose "Created rule '$ruleName' (Id: $newId, DetectorId: $detectorId)."
+                    # The created rule joins the cached list, so the next rule does not ask the list again
+                    $created = [ordered]@{ id = $newId; detectorId = $response.detectorId; displayName = $jsonObj.displayName; detectionAction = $jsonObj.detectionAction }
+                    Add-CustomDetectionIdsCacheEntry -Entry (ConvertTo-CustomDetectionIdEntry -Rule $created)
+                    Write-Verbose "Created rule '$ruleName' (Id: $newId, Guid: $detectorId)."
 
                     [PSCustomObject]@{
                         Action     = 'Created'

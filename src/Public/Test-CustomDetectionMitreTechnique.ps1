@@ -4,9 +4,10 @@ function Test-CustomDetectionMitreTechnique {
         Validates that MITRE ATT&CK techniques in a detection rule are supported by XDR for the selected category.
 
     .DESCRIPTION
-        Reads the alertCategory and mitreTechniques from a detection YAML file or object and checks
-        each technique against the set of techniques that Microsoft XDR supports for that category.
-        Techniques not supported by XDR for the given category are reported as invalid.
+        Reads the tactics list, or the legacy alertCategory and mitreTechniques, from a detection
+        YAML file or object and checks each technique against the set of techniques that Microsoft
+        XDR supports for that category. Techniques not supported by XDR for the given category are
+        reported as invalid. With a tactics list every tactic is validated and the results are combined.
 
         The technique mapping is derived from the XDR portal's front-end data and reflects the
         actual techniques available in each alert category dropdown.
@@ -22,12 +23,8 @@ function Test-CustomDetectionMitreTechnique {
 
     .OUTPUTS
         PSCustomObject with:
-          IsValid          - $true if all listed techniques are supported for the category
-          Category         - the alertCategory value
-          ValidTechniques  - techniques that are supported for the category
-          InvalidTechniques- techniques that are NOT supported for the category
-          IsValid          - $true if all listed techniques are supported for the category
-          Category         - the alertCategory value
+          IsValid          - $true if all listed techniques are supported for their category
+          Category         - the tactic name(s), comma separated when several tactics are listed
           ValidTechniques  - techniques that are supported for the category
           InvalidTechniques- techniques that are NOT supported for the category
 
@@ -42,7 +39,7 @@ function Test-CustomDetectionMitreTechnique {
         Validates all YAML files in a directory.
 
     .EXAMPLE
-        Import-CustomDetectionYamlFile -FilePath '.\detection.yaml' | Test-CustomDetectionMitreTechnique
+        ConvertFrom-Yaml (Get-Content '.\detection.yaml' -Raw) | Test-CustomDetectionMitreTechnique
 
         Pipeline input from a parsed YAML object.
 
@@ -96,57 +93,77 @@ function Test-CustomDetectionMitreTechnique {
                 $InputObject
             }
 
-            $category = $yamlObj.alertCategory
-            $techniques = @($yamlObj.mitreTechniques)
-
-            if (-not $category) {
-                throw "The detection object does not contain an 'alertCategory' property."
-            }
-
-            # No techniques defined — nothing to validate
-            if (-not $techniques -or $techniques.Count -eq 0) {
-                Write-Verbose "No mitreTechniques defined in the detection. Nothing to validate."
-                return [PSCustomObject]@{
-                    IsValid           = $true
-                    Category          = $category
-                    ValidTechniques   = @()
-                    InvalidTechniques = @()
+            # Build one (category, techniques) pair per tactic. A tactics list wins over the legacy keys.
+            $sets = [System.Collections.Generic.List[object]]::new()
+            if ($yamlObj.tactics) {
+                # Entries are validated as written. A listed parent counts alongside its sub-techniques, a derived one does not
+                foreach ($tacticItem in @($yamlObj.tactics)) {
+                    $tactic = ConvertTo-CustomDetectionHashtable -InputObject $tacticItem
+                    if (-not $tactic) { continue }
+                    $flattened = [System.Collections.Generic.List[string]]::new()
+                    foreach ($technique in @($tactic['techniques'])) {
+                        if ($null -eq $technique) { continue }
+                        if ($technique -is [string]) {
+                            if ($technique.Trim()) { $flattened.Add($technique.Trim()) }
+                            continue
+                        }
+                        $entry = ConvertTo-CustomDetectionHashtable -InputObject $technique
+                        if (-not $entry) { continue }
+                        if ("$($entry['technique'])".Trim()) { $flattened.Add("$($entry['technique'])".Trim()) }
+                        foreach ($sub in @($entry['subTechniques'])) {
+                            if ("$sub".Trim()) { $flattened.Add("$sub".Trim()) }
+                        }
+                    }
+                    $sets.Add(@{ Category = "$($tactic['tactic'])"; Techniques = $flattened.ToArray() })
                 }
-            }
-
-            # Category not present in XDR mapping — cannot validate
-            if (-not $xdrTechniqueMap.ContainsKey($category)) {
-                Write-Warning "Category '$category' is not present in the XDR technique mapping. Validation skipped."
-                return [PSCustomObject]@{
-                    IsValid           = $true
-                    Category          = $category
-                    ValidTechniques   = @($techniques)
-                    InvalidTechniques = @()
+            } else {
+                $category = $yamlObj.alertCategory
+                if (-not $category) {
+                    throw "The detection object does not contain an 'alertCategory' or 'tactics' property."
                 }
+                $sets.Add(@{ Category = $category; Techniques = @($yamlObj.mitreTechniques | Where-Object { $_ }) })
             }
 
-            $supported = $xdrTechniqueMap[$category]
             $validTechniques = [System.Collections.Generic.List[string]]::new()
             $invalidTechniques = [System.Collections.Generic.List[string]]::new()
 
-            foreach ($technique in $techniques) {
-                if ($technique -in $supported) {
-                    $validTechniques.Add($technique)
-                } else {
-                    $invalidTechniques.Add($technique)
+            foreach ($set in $sets) {
+                $category = $set.Category
+                $techniques = @($set.Techniques)
+
+                # No techniques defined — nothing to validate
+                if ($techniques.Count -eq 0) {
+                    Write-Verbose "No techniques defined for category '$category'. Nothing to validate."
+                    continue
+                }
+
+                # Category not present in XDR mapping — cannot validate
+                if (-not $xdrTechniqueMap.ContainsKey($category)) {
+                    Write-Warning "Category '$category' is not present in the XDR technique mapping. Validation skipped."
+                    foreach ($technique in $techniques) { $validTechniques.Add($technique) }
+                    continue
+                }
+
+                $supported = $xdrTechniqueMap[$category]
+                $invalidForCategory = [System.Collections.Generic.List[string]]::new()
+                foreach ($technique in $techniques) {
+                    if ($technique -in $supported) {
+                        $validTechniques.Add($technique)
+                    } else {
+                        $invalidTechniques.Add($technique)
+                        $invalidForCategory.Add($technique)
+                    }
+                }
+
+                if ($invalidForCategory.Count -gt 0) {
+                    $invalidList = $invalidForCategory -join ', '
+                    Write-Warning "The following MITRE technique(s) are not supported by XDR for category '$category': $invalidList"
                 }
             }
 
-            $isValid = $invalidTechniques.Count -eq 0
-
-            if (-not $isValid) {
-                $invalidList = $invalidTechniques -join ', '
-                Write-Warning "The following MITRE technique(s) are not supported by XDR for category '$category': $invalidList"
-            }
-
             [PSCustomObject]@{
-                IsValid           = $isValid
-                Category          = $category
+                IsValid           = ($invalidTechniques.Count -eq 0)
+                Category          = (($sets | ForEach-Object { $_.Category }) -join ', ')
                 ValidTechniques   = $validTechniques.ToArray()
                 InvalidTechniques = $invalidTechniques.ToArray()
             }

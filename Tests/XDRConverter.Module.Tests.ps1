@@ -223,6 +223,14 @@ queryText: DeviceEvents | where ActionType == "Test"
             $yamlContent = Get-Content -Path $tempYamlFile2 -Raw
             $yamlContent | Should -Match 'PREFIX-ROUND-TRIP-Test'
             $yamlContent | Should -Match '81fb771a-c57e-41b8-9905-63dbf267c13f'
+            $yamlContent | Should -Match 'frequency:\s*PT0S'
+            $yamlContent | Should -Match 'tactics:'
+            $yamlContent | Should -Not -Match 'alertCategory:'
+
+            # The upgraded YAML must produce the same request body as the original
+            $first = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile
+            $second = ConvertTo-CustomDetectionJson -InputFile $tempYamlFile2
+            $second | Should -Be $first
         }
     }
 }

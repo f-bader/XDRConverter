@@ -14,6 +14,7 @@ $script:ModuleRoot = $PSScriptRoot
 $script:DetectionIdsCache = @{
     Data      = $null
     ExpiresAt = [datetime]::MinValue
+    FailedAt  = $null
 }
 
 # Dot-source private then public functions via auto-discovery
