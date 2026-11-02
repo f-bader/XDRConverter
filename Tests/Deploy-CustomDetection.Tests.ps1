@@ -10,6 +10,9 @@ Describe 'Deploy-CustomDetection' {
                 param($Method, $Uri, $Body, $Headers, $OutputType)
             }
         }
+        if (-not (Get-Command -Name Get-MgContext -ErrorAction SilentlyContinue)) {
+            function global:Get-MgContext {}
+        }
 
         $ModulePath = Split-Path -Path $PSScriptRoot -Parent
         $ModulePath = Join-Path -Path $ModulePath -ChildPath 'src' | Join-Path -ChildPath 'XDRConverter.psd1'
@@ -25,6 +28,7 @@ Describe 'Deploy-CustomDetection' {
         # runs without real authentication. Individual contexts/tests can override
         # these mocks with more specific behaviour as needed.
         Mock Assert-MgGraphConnection {} -ModuleName XDRConverter
+        Mock Get-MgContext { [PSCustomObject]@{ TenantId = 'tenant-a' } } -ModuleName XDRConverter
         Mock Invoke-MgGraphRequest {} -ModuleName XDRConverter
         Mock Get-CustomDetectionIdByDetectorId { return $null } -ModuleName XDRConverter
         Mock Get-CustomDetection { return @() } -ModuleName XDRConverter
@@ -1622,6 +1626,25 @@ queryText: DeviceEvents | take 1
             Should -Invoke Invoke-MgGraphRequest -ModuleName XDRConverter -Times 0 -Exactly -ParameterFilter { $Method -in @('POST', 'PATCH') }
         }
 
+        It 'Skips the unchanged rule in another tenant after a delete in the first' {
+            Remove-CustomDetection -Id $script:staleId -Confirm:$false | Out-Null
+            Mock Get-MgContext { [PSCustomObject]@{ TenantId = 'tenant-b' } } -ModuleName XDRConverter
+
+            $result = Deploy-CustomDetection -InputFile $script:staleFile -Confirm:$false
+            $result.Action | Should -Be 'Skipped'
+        }
+
+        It 'Keeps the delete in the first tenant when the rule answers NotFound in another' {
+            Remove-CustomDetection -Id $script:staleId -Confirm:$false | Out-Null
+            Mock Get-MgContext { [PSCustomObject]@{ TenantId = 'tenant-b' } } -ModuleName XDRConverter
+            Mock Get-CustomDetection { throw 'Response status code does not indicate success: NotFound (Not Found).' } -ModuleName XDRConverter -ParameterFilter { $DetectionId -eq $script:staleId }
+            Deploy-CustomDetection -InputFile $script:staleFile -WhatIf | Out-Null
+
+            Mock Get-MgContext { [PSCustomObject]@{ TenantId = 'tenant-a' } } -ModuleName XDRConverter
+            Mock Get-CustomDetection { return $script:staleRule } -ModuleName XDRConverter -ParameterFilter { $DetectionId -eq $script:staleId }
+            { Deploy-CustomDetection -InputFile $script:staleFile -Confirm:$false -ErrorAction SilentlyContinue } | Should -Throw '*deleted earlier in this session*'
+        }
+
         It 'Forgets the delete once the GET answers NotFound and creates the rule' {
             Remove-CustomDetection -Id $script:staleId -Confirm:$false | Out-Null
             Mock Get-CustomDetection { throw 'Response status code does not indicate success: NotFound (Not Found).' } -ModuleName XDRConverter -ParameterFilter { $DetectionId -eq $script:staleId }
@@ -1630,7 +1653,7 @@ queryText: DeviceEvents | take 1
             Deploy-CustomDetection -InputFile $script:staleFile -WhatIf | Out-Null
             Should -Invoke Invoke-MgGraphRequest -ModuleName XDRConverter -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
             InModuleScope XDRConverter -Parameters @{ Id = $script:staleId } {
-                $script:DeletedRuleIds.Contains($Id) | Should -BeFalse
+                $script:DeletedRuleIds.Contains((Get-CustomDetectionDeletedRuleKey -Id $Id)) | Should -BeFalse
             }
 
             $result = Deploy-CustomDetection -InputFile $script:staleFile -Confirm:$false
@@ -1639,7 +1662,7 @@ queryText: DeviceEvents | take 1
         }
 
         It 'Creates the rule without a throw when the list still names a deleted id that answers NotFound' {
-            InModuleScope XDRConverter { [void]$script:DeletedRuleIds.Add('gone-id') }
+            InModuleScope XDRConverter { [void]$script:DeletedRuleIds.Add((Get-CustomDetectionDeletedRuleKey -Id 'gone-id')) }
             Mock Get-CustomDetectionIdByDetectorId { return 'gone-id' } -ModuleName XDRConverter
             Mock Get-CustomDetection { throw 'Response status code does not indicate success: NotFound (Not Found).' } -ModuleName XDRConverter -ParameterFilter { $DetectionId -in @('gone-id', $script:staleId) }
 
@@ -1647,7 +1670,7 @@ queryText: DeviceEvents | take 1
             $result.Action | Should -Be 'Created'
             Should -Invoke Invoke-MgGraphRequest -ModuleName XDRConverter -Times 1 -Exactly -ParameterFilter { $Method -eq 'POST' }
             InModuleScope XDRConverter {
-                $script:DeletedRuleIds.Contains('gone-id') | Should -BeFalse
+                $script:DeletedRuleIds.Contains((Get-CustomDetectionDeletedRuleKey -Id 'gone-id')) | Should -BeFalse
             }
         }
 

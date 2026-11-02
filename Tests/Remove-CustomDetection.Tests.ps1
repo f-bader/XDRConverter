@@ -8,6 +8,9 @@ Describe 'Remove-CustomDetection' {
                 param($Method, $Uri, $Body, $Headers, $OutputType)
             }
         }
+        if (-not (Get-Command -Name Get-MgContext -ErrorAction SilentlyContinue)) {
+            function global:Get-MgContext {}
+        }
 
         $ModulePath = Split-Path -Path $PSScriptRoot -Parent
         $ModulePath = Join-Path -Path $ModulePath -ChildPath 'src' | Join-Path -ChildPath 'XDRConverter.psd1'
@@ -20,6 +23,7 @@ Describe 'Remove-CustomDetection' {
 
     BeforeEach {
         Mock Assert-MgGraphConnection {} -ModuleName XDRConverter
+        Mock Get-MgContext { [PSCustomObject]@{ TenantId = 'tenant-a' } } -ModuleName XDRConverter
         Mock Invoke-MgGraphRequest {} -ModuleName XDRConverter
         Mock Get-CustomDetectionIdByDetectorId { return $null } -ModuleName XDRConverter
         Mock Get-CustomDetectionIdByDescriptionTag { return $null } -ModuleName XDRConverter
@@ -146,7 +150,7 @@ Describe 'Remove-CustomDetection' {
             }
         }
 
-        It 'Should remember the deleted id for the session' {
+        It 'Should remember the deleted id for the session and the tenant' {
             Mock Get-CustomDetection {
                 return @{ id = 'rule-321'; displayName = 'Remembered Rule' }
             } -ModuleName XDRConverter
@@ -155,7 +159,8 @@ Describe 'Remove-CustomDetection' {
             Remove-CustomDetection -Id 'rule-321' -Confirm:$false | Out-Null
 
             InModuleScope XDRConverter {
-                $script:DeletedRuleIds.Contains('rule-321') | Should -BeTrue
+                $script:DeletedRuleIds.Contains('tenant-a/rule-321') | Should -BeTrue
+                $script:DeletedRuleIds.Contains('tenant-b/rule-321') | Should -BeFalse
             }
         }
 
@@ -168,7 +173,7 @@ Describe 'Remove-CustomDetection' {
             { Remove-CustomDetection -Id 'rule-654' -Confirm:$false -ErrorAction SilentlyContinue } | Should -Throw
 
             InModuleScope XDRConverter {
-                $script:DeletedRuleIds.Contains('rule-654') | Should -BeFalse
+                $script:DeletedRuleIds.Contains((Get-CustomDetectionDeletedRuleKey -Id 'rule-654')) | Should -BeFalse
             }
         }
 

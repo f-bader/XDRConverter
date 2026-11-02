@@ -314,7 +314,7 @@ function Deploy-CustomDetection {
                     if (-not (Test-CustomDetectionNotFound -ErrorRecord $_)) { throw }
                     Write-Verbose "The rule list names '$existingRuleId', which answers NotFound. It is treated as absent."
                     Clear-CustomDetectionIdsCacheEntry -Id $existingRuleId
-                    [void]$script:DeletedRuleIds.Remove([string]$existingRuleId)
+                    [void]$script:DeletedRuleIds.Remove((Get-CustomDetectionDeletedRuleKey -Id $existingRuleId))
                     $existingRuleId = $null
                 }
             }
@@ -328,7 +328,7 @@ function Deploy-CustomDetection {
                     Write-Verbose "Found the rule through its client id '$existingRuleId', which the list did not carry."
                 } else {
                     # NotFound shows the delete has reached the reads, so the record is dropped and a rule created later is trusted
-                    [void]$script:DeletedRuleIds.Remove("rule-$detectorId")
+                    [void]$script:DeletedRuleIds.Remove((Get-CustomDetectionDeletedRuleKey -Id "rule-$detectorId"))
                 }
             }
 
@@ -344,7 +344,7 @@ function Deploy-CustomDetection {
             $ruleName = $jsonObj.displayName
 
             # A GET can return a rule for a while after its delete. Its content proves nothing, so nothing is written
-            if ($existingRule -and $script:DeletedRuleIds.Contains([string]$existingRuleId)) {
+            if ($existingRule -and $script:DeletedRuleIds.Contains((Get-CustomDetectionDeletedRuleKey -Id $existingRuleId))) {
                 throw "Graph still returns rule $existingRuleId, deleted earlier in this session. Nothing was written. Deploy again once a GET for the id answers 404."
             }
 
