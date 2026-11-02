@@ -381,7 +381,7 @@ The Graph API deprecated several `detectionRule` properties and removes them on 
 | status | No | `status` | `enabled`, `disabled` or `autoDisabled`. Wins over `isEnabled` |
 | isEnabled | No | `status` | Legacy. `true` becomes `enabled`, `false` becomes `disabled`. Defaults to enabled |
 | frequency | Yes | `schedule.frequency` | ISO 8601 duration of days, hours, minutes and seconds. Normalised to the form the API stores, so `PT1440M` and `P1DT0H` become `P1D` and `PT90M` becomes `PT1H30M`. Weeks, months and years are rejected. Legacy tokens `0`, `1H`, `3H`, `12H`, `24H` are translated |
-| lookback | No | `schedule.lookback` | ISO 8601 duration the query covers, normalised like `frequency`. Sent only when the file sets it, otherwise the rule keeps its value. A new rule gets `PT4H` for `PT1H`, `PT12H` for `PT3H`, `P2D` for `PT12H`, `P30D` for `P1D` and none for `PT0S`. A default lookback follows a frequency change, a set one stays |
+| lookback | No | `schedule.lookback` | ISO 8601 duration the query covers, normalised like `frequency`. Sent only when the file sets it, otherwise the rule keeps its value. A new rule gets `PT4H` for `PT1H`, `PT12H` for `PT3H`, `P2D` for `PT12H`, `P30D` for `P1D` and none for `PT0S`. A frequency change deployed without `lookback` keeps the stored lookback, a default one included, so set `lookback` together with a new frequency |
 | alertTitle | Yes | `detectionAction.alertTemplate.title` | |
 | alertSeverity | Yes | `detectionAction.alertTemplate.severity` | |
 | alertDescription | Yes | `detectionAction.alertTemplate.description` | The description tag is appended on deploy |
