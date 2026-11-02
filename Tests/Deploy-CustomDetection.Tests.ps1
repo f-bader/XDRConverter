@@ -1394,7 +1394,7 @@ queryText: DeviceEvents | take 1
             Mock Get-CustomDetectionIdByDescriptionTag { return $null } -ModuleName XDRConverter
         }
 
-        It 'Sends the settings a JSON file sets away from the default and leaves a stated default out' {
+        It 'Sends every setting a JSON file states, a default included' {
             $testJson = @"
 {
     "id": "rule-81fb771a-c57e-41b8-9905-63dbf267c13f",
@@ -1436,7 +1436,93 @@ queryText: DeviceEvents | take 1
             $script:CapturedMethod | Should -Be 'PATCH'
             $script:CapturedBody.schedule.lookback | Should -Be 'P1D'
             $script:CapturedBody.detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation | Should -BeTrue
-            $script:CapturedBody.detectionAction.alertTemplate.Keys | Should -Not -Contain 'eventGroupingKind'
+            $script:CapturedBody.detectionAction.alertTemplate.eventGroupingKind | Should -Be 'alertPerEvent'
+        }
+
+        It 'Sets a rule back to the defaults a JSON file states' {
+            $testJson = @"
+{
+    "id": "rule-81fb771a-c57e-41b8-9905-63dbf267c13f",
+    "displayName": "TEST-Settings",
+    "status": "enabled",
+    "queryCondition": { "queryText": "DeviceEvents" },
+    "schedule": { "frequency": "PT1H", "lookback": "PT4H" },
+    "detectionAction": {
+        "alertTemplate": {
+            "title": "Settings",
+            "description": "Settings description",
+            "severity": "low",
+            "tactics": [ { "tactic": "Execution" } ],
+            "eventGroupingKind": "alertPerEvent"
+        },
+        "incidentConfiguration": { "isExcludedFromIncidentCorrelation": false }
+    }
+}
+"@
+            $tempFile = Join-Path TestDrive: 'defaults.json'
+            $testJson | Out-File -FilePath $tempFile -Encoding UTF8
+            Mock Get-CustomDetectionIdByDetectorId { return 'rule-81fb771a-c57e-41b8-9905-63dbf267c13f' } -ModuleName XDRConverter
+            Mock Get-CustomDetection {
+                return @{
+                    id              = 'rule-81fb771a-c57e-41b8-9905-63dbf267c13f'
+                    displayName     = 'TEST-Settings'
+                    status          = 'enabled'
+                    queryCondition  = @{ queryText = 'DeviceEvents' }
+                    schedule        = @{ frequency = 'PT1H'; lookback = 'P1D' }
+                    detectionAction = @{
+                        alertTemplate         = @{ title = 'Settings'; description = 'Settings description [81fb771a-c57e-41b8-9905-63dbf267c13f]'; severity = 'low'; tactics = @(@{ tactic = 'Execution' }); eventGroupingKind = 'singleAlert' }
+                        incidentConfiguration = @{ isExcludedFromIncidentCorrelation = $true }
+                    }
+                }
+            } -ModuleName XDRConverter -ParameterFilter { $DetectionId -eq 'rule-81fb771a-c57e-41b8-9905-63dbf267c13f' }
+
+            $result = Deploy-CustomDetection -InputFile $tempFile -Confirm:$false
+            $result.Action | Should -Be 'Updated'
+            $script:CapturedMethod | Should -Be 'PATCH'
+            $script:CapturedBody.schedule.lookback | Should -Be 'PT4H'
+            $script:CapturedBody.detectionAction.alertTemplate.eventGroupingKind | Should -Be 'alertPerEvent'
+            $script:CapturedBody.detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation | Should -BeFalse
+        }
+
+        It 'Skips a rule that already holds the defaults a JSON file states' {
+            $testJson = @"
+{
+    "id": "rule-81fb771a-c57e-41b8-9905-63dbf267c13f",
+    "displayName": "TEST-Settings",
+    "status": "enabled",
+    "queryCondition": { "queryText": "DeviceEvents" },
+    "schedule": { "frequency": "PT1H", "lookback": "PT4H" },
+    "detectionAction": {
+        "alertTemplate": {
+            "title": "Settings",
+            "description": "Settings description",
+            "severity": "low",
+            "tactics": [ { "tactic": "Execution" } ],
+            "eventGroupingKind": "alertPerEvent"
+        },
+        "incidentConfiguration": { "isExcludedFromIncidentCorrelation": false }
+    }
+}
+"@
+            $tempFile = Join-Path TestDrive: 'defaults-held.json'
+            $testJson | Out-File -FilePath $tempFile -Encoding UTF8
+            Mock Get-CustomDetectionIdByDetectorId { return 'rule-81fb771a-c57e-41b8-9905-63dbf267c13f' } -ModuleName XDRConverter
+            Mock Get-CustomDetection {
+                return @{
+                    id              = 'rule-81fb771a-c57e-41b8-9905-63dbf267c13f'
+                    displayName     = 'TEST-Settings'
+                    status          = 'enabled'
+                    queryCondition  = @{ queryText = 'DeviceEvents' }
+                    schedule        = @{ frequency = 'PT1H'; lookback = 'PT4H' }
+                    detectionAction = @{
+                        alertTemplate         = @{ title = 'Settings'; description = 'Settings description [81fb771a-c57e-41b8-9905-63dbf267c13f]'; severity = 'low'; tactics = @(@{ tactic = 'Execution' }); eventGroupingKind = 'alertPerEvent' }
+                        incidentConfiguration = @{ isExcludedFromIncidentCorrelation = $false }
+                    }
+                }
+            } -ModuleName XDRConverter -ParameterFilter { $DetectionId -eq 'rule-81fb771a-c57e-41b8-9905-63dbf267c13f' }
+
+            $result = Deploy-CustomDetection -InputFile $tempFile -Confirm:$false
+            $result.Action | Should -Be 'Skipped'
         }
     }
 

@@ -157,9 +157,9 @@ function Deploy-CustomDetection {
                     Import-CustomDetectionYamlFile -FilePath $InputFile
                 }
                 '.json' {
-                    # Normalise JSON input through the YAML shape so legacy files deploy with the current body
+                    # Normalise JSON input through the YAML shape so legacy files deploy with the current body. A default the file states is sent
                     $rawJson = Import-CustomDetectionJsonFile -FilePath $InputFile
-                    ConvertFrom-CustomDetectionJsonToYaml -JsonObject $rawJson -ValidateIdentifiers:(-not $SkipIdentifierValidation)
+                    ConvertFrom-CustomDetectionJsonToYaml -JsonObject $rawJson -ValidateIdentifiers:(-not $SkipIdentifierValidation) -KeepDefaults
                 }
                 default {
                     throw "Unsupported file extension '$extension'. Use .yaml, .yml, or .json."

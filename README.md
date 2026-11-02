@@ -450,7 +450,7 @@ The API keeps any collection that a PATCH omits. An update therefore sends an em
 
 `ConvertTo-CustomDetectionYaml` always emits the current keys: `frequency` as an ISO 8601 duration, `tactics`, `entityMappings`, `actions` with their column mapping, `customDetails`, `description` and `organizationalScope` as a plain list. `isEnabled` is kept for compatibility and `status` is added only for `autoDisabled`. Rules returned with the legacy properties are translated, so converting an old rule upgrades its YAML file.
 
-`lookback` is emitted only when it differs from the default for the rule's frequency, `eventGroupingKind` only when it is not `alertPerEvent`, and `isExcludedFromIncidentCorrelation` only when it is `true`. A JSON file passed to `Deploy-CustomDetection` goes through the same conversion, so a value equal to the default is not sent and the rule keeps the value it holds. `-LegacyKeys` drops the three keys with a warning.
+`lookback` is emitted only when it differs from the default for the rule's frequency, `eventGroupingKind` only when it is not `alertPerEvent`, and `isExcludedFromIncidentCorrelation` only when it is `true`. A JSON file passed to `Deploy-CustomDetection` keeps every value it states, defaults included, so it can set a rule back to a default. `-LegacyKeys` drops the three keys with a warning.
 
 ### Upgrading existing YAML files
 
@@ -548,7 +548,7 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 
 - New optional YAML keys `lookback`, `eventGroupingKind` and `isExcludedFromIncidentCorrelation`, written to `schedule.lookback`, `detectionAction.alertTemplate.eventGroupingKind` and `detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation`. They reach the request and the change detection only when the file sets them, so a file without them never reports an update
 - `lookback` is normalised to the form the API stores, as `frequency` is
-- `ConvertTo-CustomDetectionYaml` emits the three keys only when they differ from the value the API assigns. `-LegacyKeys` drops them with a warning
+- `ConvertTo-CustomDetectionYaml` emits the three keys only when they differ from the value the API assigns. `-LegacyKeys` drops them with a warning. A JSON file passed to `Deploy-CustomDetection` sends every value it states, defaults included
 - A rule may list more than one tactic. The techniques of each tactic are still validated against that tactic
 - `Deploy-CustomDetection` creates a rule when the id the rule list names answers NotFound. It used to stop with the NotFound error
 - `Deploy-CustomDetection` throws for a rule that `Remove-CustomDetection` deleted in the same session while a GET still returns it ([#15](https://github.com/f-bader/XDRConverter/issues/15)). It used to report `Skipped` and leave the rule absent

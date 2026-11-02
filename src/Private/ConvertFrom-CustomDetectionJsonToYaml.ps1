@@ -14,6 +14,8 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         lookback, eventGroupingKind and isExcludedFromIncidentCorrelation are
         emitted only when they differ from the value the API assigns: the
         documented lookback for the frequency, alertPerEvent and false.
+        -KeepDefaults emits them whenever the rule carries them, so a deploy
+        from JSON sends a default the file states.
     #>
     [CmdletBinding()]
     param(
@@ -28,7 +30,10 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         [string]$SetSeverity,
 
         [Parameter()]
-        [switch]$ValidateIdentifiers
+        [switch]$ValidateIdentifiers,
+
+        [Parameter()]
+        [switch]$KeepDefaults
     )
 
     $DefaultSortOrderInYAML = @(
@@ -110,7 +115,7 @@ function ConvertFrom-CustomDetectionJsonToYaml {
     $lookbackSource = Get-CustomDetectionValue -Object $JsonObject -Path 'schedule.lookback'
     if (Test-CustomDetectionValue $lookbackSource) {
         $lookback = ConvertTo-CustomDetectionLookback -Value $lookbackSource
-        if ($lookback -ne $defaultLookback["$($yamlObj['frequency'])"]) {
+        if ($KeepDefaults -or $lookback -ne $defaultLookback["$($yamlObj['frequency'])"]) {
             $yamlObj['lookback'] = $lookback
         }
     }
@@ -121,12 +126,12 @@ function ConvertFrom-CustomDetectionJsonToYaml {
     }
 
     $groupingKind = Get-CustomDetectionValue -Object $JsonObject -Path 'detectionAction.alertTemplate.eventGroupingKind'
-    if ((Test-CustomDetectionValue $groupingKind) -and "$groupingKind" -ne 'alertPerEvent') {
+    if ((Test-CustomDetectionValue $groupingKind) -and ($KeepDefaults -or "$groupingKind" -ne 'alertPerEvent')) {
         $yamlObj['eventGroupingKind'] = "$groupingKind"
     }
 
     $excluded = Get-CustomDetectionValue -Object $JsonObject -Path 'detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation'
-    if ($null -ne $excluded -and "$excluded" -notin @('', 'false')) {
+    if ($null -ne $excluded -and "$excluded" -ne '' -and ($KeepDefaults -or "$excluded" -ne 'false')) {
         # The value keeps its type so the deploy-side validation can reject one that is not a boolean
         $yamlObj['isExcludedFromIncidentCorrelation'] = $excluded
     }
