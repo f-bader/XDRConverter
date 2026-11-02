@@ -170,6 +170,22 @@ Describe 'CustomDetection schema' {
         (Test-Json -Json ($rule | ConvertTo-Json) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeTrue
     }
 
+    It 'Rejects singleAlert with the exclusion <Case>, as Graph does' -ForEach @(
+        @{ Case = 'left out'; Excluded = $null }
+        @{ Case = 'false'; Excluded = $false }
+    ) {
+        $rule = $script:BaseRule.Clone()
+        $rule.eventGroupingKind = 'singleAlert'
+        if ($null -ne $Excluded) { $rule.isExcludedFromIncidentCorrelation = $Excluded }
+        (Test-Json -Json ($rule | ConvertTo-Json) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeFalse
+    }
+
+    It 'Accepts alertPerEvent without the exclusion' {
+        $rule = $script:BaseRule.Clone()
+        $rule.eventGroupingKind = 'alertPerEvent'
+        (Test-Json -Json ($rule | ConvertTo-Json) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeTrue
+    }
+
     It 'Rejects the <Key> value <Value>, as the converter does' -ForEach @(
         @{ Key = 'eventGroupingKind'; Value = 'unknownFutureValue' }
         @{ Key = 'lookback'; Value = 'P1W' }

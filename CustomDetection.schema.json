@@ -107,7 +107,7 @@
         },
         "eventGroupingKind": {
             "type": "string",
-            "description": "Optional. alertPerEvent raises an alert for each query result, singleAlert one alert for all results of a run. When absent the rule keeps its value, and a new rule gets alertPerEvent. The converter also accepts other casings",
+            "description": "Optional. alertPerEvent raises an alert for each query result, singleAlert one alert for all results of a run. Graph accepts singleAlert only together with isExcludedFromIncidentCorrelation: true. When absent the rule keeps its value, and a new rule gets alertPerEvent. The converter also accepts other casings",
             "enum": [
                 "alertPerEvent",
                 "singleAlert"
@@ -115,7 +115,7 @@
         },
         "isExcludedFromIncidentCorrelation": {
             "type": "boolean",
-            "description": "Optional. true keeps the alerts of this rule out of incident correlation. When absent the rule keeps its value, and a new rule gets false"
+            "description": "Optional. true keeps the alerts of this rule out of incident correlation. Must be true when eventGroupingKind is singleAlert. When absent the rule keeps its value, and a new rule gets false"
         },
         "alertCategory": {
             "type": "string",
@@ -731,6 +731,28 @@
                     ]
                 }
             ]
+        },
+        {
+            "if": {
+                "properties": {
+                    "eventGroupingKind": {
+                        "const": "singleAlert"
+                    }
+                },
+                "required": [
+                    "eventGroupingKind"
+                ]
+            },
+            "then": {
+                "properties": {
+                    "isExcludedFromIncidentCorrelation": {
+                        "const": true
+                    }
+                },
+                "required": [
+                    "isExcludedFromIncidentCorrelation"
+                ]
+            }
         }
     ]
 }
