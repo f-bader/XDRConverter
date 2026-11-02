@@ -420,6 +420,20 @@ tactics:
                         "$warning" | Should -Match 'Both tactics and alertCategory/mitreTechniques'
         }
 
+        It 'Sends a tactic written in another casing as Graph spells it' {
+            $yaml = $baseYaml + @"
+
+frequency: 1H
+tactics:
+  - tactic: persistence
+    techniques:
+      - T1547.001
+"@
+            $file = New-YamlFile -Name 'tactic-casing.yaml' -Content $yaml
+            $result = ConvertTo-CustomDetectionJson -InputFile $file -WarningAction SilentlyContinue | ConvertFrom-Json
+            $result.detectionAction.alertTemplate.tactics[0].tactic | Should -BeExactly 'Persistence'
+        }
+
         It 'Carries a detectorId from the file into the body without a warning' {
             $yaml = @"
 guid: 81fb771a-c57e-41b8-9905-63dbf267c13f

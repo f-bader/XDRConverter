@@ -387,8 +387,8 @@ The Graph API deprecated several `detectionRule` properties and removes them on 
 | alertDescription | Yes | `detectionAction.alertTemplate.description` | The description tag is appended on deploy |
 | alertRecommendedAction | No | `detectionAction.alertTemplate.recommendedActions` | A value the file does not set is left unchanged on the rule |
 | eventGroupingKind | No | `detectionAction.alertTemplate.eventGroupingKind` | `alertPerEvent` or `singleAlert`, matched without case. Sent only when the file sets it, otherwise the rule keeps its value. A new rule gets `alertPerEvent` |
-| tactics | One of | `detectionAction.alertTemplate.tactics` | List of `{ tactic, techniques }` entries. Techniques may be plain ids or `{ technique, subTechniques }`, and each tactic's techniques are validated against that tactic. Wins over `alertCategory` and `mitreTechniques` |
-| alertCategory | One of | `detectionAction.alertTemplate.tactics[0].tactic` | Legacy. Becomes the single tactic |
+| tactics | One of | `detectionAction.alertTemplate.tactics` | List of `{ tactic, techniques }` entries. Techniques may be plain ids or `{ technique, subTechniques }`, and each tactic's techniques are validated against that tactic. Wins over `alertCategory` and `mitreTechniques`. The API matches tactic names with case, so a known name is sent in the spelling the API accepts, `execution` as `Execution`. Known names are the tactics of the MITRE check plus `SuspiciousActivity` and `Malware`. Other names are sent as written |
+| alertCategory | One of | `detectionAction.alertTemplate.tactics[0].tactic` | Legacy. Becomes the single tactic, spelled as for `tactics` |
 | mitreTechniques | No | `detectionAction.alertTemplate.tactics[0].techniques` | Legacy flat list. Sub-techniques are grouped under their parent technique |
 | entityMappings | No | `detectionAction.alertTemplate.entityMappings` | Object keyed by entity collection (`accounts`, `hosts`, `mailboxes`, `files`, `ips`, `urls`, ...) holding column mappings. Wins over `impactedEntities` |
 | impactedEntities | No | `detectionAction.alertTemplate.entityMappings` | Legacy `{ entityType, entityIdentifier }` list. `Machine`/`Device` map to `hosts`, `User`/`Account` to `accounts`, `Mailbox` to `mailboxes` |
@@ -550,6 +550,7 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 - `lookback` is normalised to the form the API stores, as `frequency` is
 - `ConvertTo-CustomDetectionYaml` emits the three keys only when they differ from the value the API assigns. `-LegacyKeys` drops them with a warning. A JSON file passed to `Deploy-CustomDetection` sends every value it states, defaults included
 - A rule may list more than one tactic. The techniques of each tactic are still validated against that tactic
+- A known tactic name is sent in the spelling the API accepts, so `execution` deploys as `Execution` instead of being rejected. Known names are the tactics of the MITRE check plus `SuspiciousActivity` and `Malware`. Other names are sent as written
 - `Deploy-CustomDetection` creates a rule when the id the rule list names answers NotFound. It used to stop with the NotFound error
 - `Deploy-CustomDetection` throws for a rule that `Remove-CustomDetection` deleted in the same session while a GET still returns it ([#15](https://github.com/f-bader/XDRConverter/issues/15)). It used to report `Skipped` and leave the rule absent
 - `Get-CustomDetectionIds` asks the rule list again without the deprecated `detectorId` when the API answers the first page with BadRequest, warns once and leaves it out for the rest of the session. Lookups go on by rule ID and description tag. It used to fail every list request, and every deploy with it, on an API without the property
@@ -557,6 +558,7 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
    - Every rule carries `schedule.lookback` and `alertTemplate.eventGroupingKind`. A request that omits them keeps the stored values, and a `null` lookback is ignored
    - A frequency change deployed through `Deploy-CustomDetection` kept the stored default lookback, `PT4H` at a new frequency of `PT3H`. A set lookback stays as well. Set `lookback` together with a new frequency
    - The API accepts more than one tactic per rule, with or without techniques
+   - The API rejects a tactic name in another casing, `Invalid tactic 'execution'.`
    - A GET can return a deleted rule for more than 35 minutes while a repeated DELETE answers NotFound
 
 ### 2.0.0

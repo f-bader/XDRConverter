@@ -21,7 +21,7 @@ function Compare-CustomDetection {
     $localState = Get-CustomDetectionComparableState -Rule $Local
     $remoteState = Get-CustomDetectionComparableState -Rule $Remote
 
-    # Enumerations and device group names are matched by the API without case. Everything else, column names included, is case-sensitive
+    # Enumerations and device group names are matched by the API without case. Tactic names are matched with case, but both states spell every name the converter knows as the API does. Everything else, column names included, is case-sensitive
     $caseInsensitiveKeys = @('status', 'severity', 'eventGroupingKind', 'tactics', 'deviceGroups')
 
     # A request that omits these keeps the stored value, and every rule carries one, so only a value the file sets is compared
