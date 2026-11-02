@@ -360,4 +360,15 @@ Describe 'Compare-CustomDetection' {
             Compare-CustomDetection -Local $Local -Remote $Remote | Should -Be $false
         }
     }
+
+    It 'Reports no change for <Name> where one differs from the rule only by case' -ForEach @(
+        @{ Name = 'several tactics'; Path = 'detectionAction.alertTemplate.tactics'; LocalValue = @(@{ tactic = 'execution' }, @{ tactic = 'Persistence' }); RemoteValue = @(@{ tactic = 'Execution' }, @{ tactic = 'Persistence' }) }
+        @{ Name = 'several device groups'; Path = 'detectionAction.organizationalScope'; LocalValue = @{ deviceGroups = @('servers', 'Workstations') }; RemoteValue = @{ deviceGroups = @('Servers', 'Workstations') } }
+    ) {
+        $local = New-LocalBody -Overrides @{ $Path = $LocalValue }
+        $remote = New-LocalBody -Overrides @{ $Path = $RemoteValue }
+        InModuleScope XDRConverter -Parameters @{ Local = $local; Remote = $remote } {
+            Compare-CustomDetection -Local $Local -Remote $Remote | Should -Be $false
+        }
+    }
 }
