@@ -69,6 +69,78 @@ detectorId: 7cb0d5af-690e-4f63-b4b9-6b40728cac5f'
     }
   }
 
+  Context 'lookback, eventGroupingKind and isExcludedFromIncidentCorrelation' {
+
+    BeforeAll {
+      function Get-SampleRule {
+        param([string]$Frequency = 'PT1H', [object]$Lookback, [string]$GroupingKind = 'alertPerEvent', [bool]$Excluded = $false)
+        return [PSCustomObject]@{
+          id              = 'rule-81fb771a-c57e-41b8-9905-63dbf267c13f'
+          displayName     = 'Settings'
+          status          = 'enabled'
+          detectionAction = [PSCustomObject]@{
+            alertTemplate         = [PSCustomObject]@{ title = 't'; description = 'd'; severity = 'low'; tactics = @(@{ tactic = 'Execution' }); eventGroupingKind = $GroupingKind }
+            incidentConfiguration = [PSCustomObject]@{ isExcludedFromIncidentCorrelation = $Excluded }
+          }
+          queryCondition  = [PSCustomObject]@{ queryText = 'DeviceEvents' }
+          schedule        = [PSCustomObject]@{ frequency = $Frequency; lookback = $Lookback }
+        }
+      }
+    }
+
+    It 'Leaves out the lookback <Lookback> the API assigns to frequency <Frequency>' -ForEach @(
+      @{ Frequency = 'PT1H'; Lookback = 'PT4H' }
+      @{ Frequency = 'PT3H'; Lookback = 'PT12H' }
+      @{ Frequency = 'PT12H'; Lookback = 'P2D' }
+      @{ Frequency = 'P1D'; Lookback = 'P30D' }
+      @{ Frequency = 'PT0S'; Lookback = $null }
+    ) {
+      $yaml = Get-SampleRule -Frequency $Frequency -Lookback $Lookback | ConvertTo-CustomDetectionYaml | ConvertFrom-Yaml
+      $yaml.Keys | Should -Not -Contain 'lookback'
+      $yaml.Keys | Should -Not -Contain 'eventGroupingKind'
+      $yaml.Keys | Should -Not -Contain 'isExcludedFromIncidentCorrelation'
+    }
+
+    It 'Emits a lookback that differs from the default for the frequency' {
+      $yaml = Get-SampleRule -Frequency 'PT1H' -Lookback 'P1D' | ConvertTo-CustomDetectionYaml | ConvertFrom-Yaml
+      $yaml.lookback | Should -Be 'P1D'
+    }
+
+    It 'Emits a lookback for a frequency without a documented default' {
+      $yaml = Get-SampleRule -Frequency 'PT30M' -Lookback 'PT2H' | ConvertTo-CustomDetectionYaml | ConvertFrom-Yaml
+      $yaml.lookback | Should -Be 'PT2H'
+    }
+
+    It 'Emits eventGroupingKind singleAlert and isExcludedFromIncidentCorrelation true in a fixed key order' {
+      $result = Get-SampleRule -GroupingKind 'singleAlert' -Excluded $true -Lookback 'P2D' | ConvertTo-CustomDetectionYaml
+      $yaml = $result | ConvertFrom-Yaml -Ordered
+      $yaml.eventGroupingKind | Should -Be 'singleAlert'
+      $yaml.isExcludedFromIncidentCorrelation | Should -BeTrue
+      $keys = @($yaml.Keys)
+      $keys.IndexOf('lookback') | Should -Be ($keys.IndexOf('frequency') + 1)
+      $keys.IndexOf('eventGroupingKind') | Should -BeLessThan $keys.IndexOf('tactics')
+      $keys.IndexOf('isExcludedFromIncidentCorrelation') | Should -BeLessThan $keys.IndexOf('queryText')
+    }
+
+    It 'Round-trips the settings it emits into the request body' {
+      $file = Join-Path TestDrive: 'settings-roundtrip.yaml'
+      Get-SampleRule -GroupingKind 'singleAlert' -Excluded $true -Lookback 'P2D' | ConvertTo-CustomDetectionYaml -OutputFile $file
+      $body = ConvertTo-CustomDetectionJson -InputFile $file | ConvertFrom-Json
+      $body.schedule.lookback | Should -Be 'P2D'
+      $body.detectionAction.alertTemplate.eventGroupingKind | Should -Be 'singleAlert'
+      $body.detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation | Should -BeTrue
+    }
+
+    It 'Drops the settings with a warning under -LegacyKeys' {
+      $result = Get-SampleRule -GroupingKind 'singleAlert' -Excluded $true -Lookback 'P2D' | ConvertTo-CustomDetectionYaml -LegacyKeys -WarningVariable w -WarningAction SilentlyContinue
+      $yaml = $result | ConvertFrom-Yaml
+      foreach ($key in @('lookback', 'eventGroupingKind', 'isExcludedFromIncidentCorrelation')) {
+        $yaml.Keys | Should -Not -Contain $key
+        "$w" | Should -Match $key
+      }
+    }
+  }
+
   Context 'Functionality' {
 
     It 'Should convert JSON to YAML string when no OutputFile specified' {

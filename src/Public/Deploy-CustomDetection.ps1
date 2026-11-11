@@ -22,6 +22,12 @@ function Deploy-CustomDetection {
         updating it compares the local rule against the remote version and skips the
         call when nothing changed.
 
+        An id the list names that answers NotFound is treated as absent. A rule
+        that Remove-CustomDetection deleted in this session can still answer a
+        GET for a while. When such a rule is found, nothing is written and the
+        deploy throws, since the returned rule proves neither that it exists nor
+        that it is current. Deploy again once a GET for the id answers 404.
+
     .PARAMETER InputFile
         Path to the input YAML (.yaml/.yml) or JSON (.json) file.
 
@@ -151,9 +157,9 @@ function Deploy-CustomDetection {
                     Import-CustomDetectionYamlFile -FilePath $InputFile
                 }
                 '.json' {
-                    # Normalise JSON input through the YAML shape so legacy files deploy with the current body
+                    # Normalise JSON input through the YAML shape so legacy files deploy with the current body. A default the file states is sent
                     $rawJson = Import-CustomDetectionJsonFile -FilePath $InputFile
-                    ConvertFrom-CustomDetectionJsonToYaml -JsonObject $rawJson -ValidateIdentifiers:(-not $SkipIdentifierValidation)
+                    ConvertFrom-CustomDetectionJsonToYaml -JsonObject $rawJson -ValidateIdentifiers:(-not $SkipIdentifierValidation) -KeepDefaults
                 }
                 default {
                     throw "Unsupported file extension '$extension'. Use .yaml, .yml, or .json."
@@ -299,6 +305,20 @@ function Deploy-CustomDetection {
                 $listUnavailable = $true
                 Write-Warning "The rule list did not answer. Rule '$($jsonObj.displayName)' is looked up by its client id only."
             }
+
+            # The list can name a rule that is gone. NotFound means absent, so the lookup goes on as if the list had not named it
+            if ($existingRuleId) {
+                try {
+                    $existingRule = Get-CustomDetection -DetectionId $existingRuleId -ErrorAction SilentlyContinue
+                } catch {
+                    if (-not (Test-CustomDetectionNotFound -ErrorRecord $_)) { throw }
+                    Write-Verbose "The rule list names '$existingRuleId', which answers NotFound. It is treated as absent."
+                    Clear-CustomDetectionIdsCacheEntry -Id $existingRuleId
+                    [void]$script:DeletedRuleIds.Remove((Get-CustomDetectionDeletedRuleKey -Id $existingRuleId))
+                    $existingRuleId = $null
+                }
+            }
+
             # The list can lag behind a create or a delete, so the client id is asked for directly before a create
             if (-not $existingRuleId) {
                 $byId = Get-CustomDetectionByClientId -Guid $detectorId
@@ -306,6 +326,9 @@ function Deploy-CustomDetection {
                     $existingRuleId = $byId.id
                     $existingRule = $byId
                     Write-Verbose "Found the rule through its client id '$existingRuleId', which the list did not carry."
+                } else {
+                    # NotFound shows the delete has reached the reads, so the record is dropped and a rule created later is trusted
+                    [void]$script:DeletedRuleIds.Remove((Get-CustomDetectionDeletedRuleKey -Id "rule-$detectorId"))
                 }
             }
 
@@ -315,15 +338,15 @@ function Deploy-CustomDetection {
             if (-not $existingRuleId) {
                 Write-Verbose "The rule will be created."
             }
-
-            # Fetch the full existing rule if we found one
-            if ($existingRuleId -and -not $existingRule) {
-                $existingRule = Get-CustomDetection -DetectionId $existingRuleId
-            }
             #endregion
 
             #region Create or update
             $ruleName = $jsonObj.displayName
+
+            # A GET can return a rule for a while after its delete. Its content proves nothing, so nothing is written
+            if ($existingRule -and $script:DeletedRuleIds.Contains((Get-CustomDetectionDeletedRuleKey -Id $existingRuleId))) {
+                throw "Graph still returns rule $existingRuleId, deleted earlier in this session. Nothing was written. Deploy again once a GET for the id answers 404."
+            }
 
             if ($existingRule) {
                 # Check for actual changes

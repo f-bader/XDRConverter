@@ -7,6 +7,10 @@ function ConvertTo-CustomDetectionTactics {
         An explicit tactics list wins. Otherwise the alert category becomes the
         single tactic and the flat technique list is grouped so that
         sub-techniques sit under their parent technique.
+
+        Graph matches tactic names with case. A name the technique map knows, or
+        one of the alert categories SuspiciousActivity and Malware, is sent in
+        that spelling. Any other name is sent as written.
     #>
     [CmdletBinding()]
     [OutputType([object[]])]
@@ -73,6 +77,17 @@ function ConvertTo-CustomDetectionTactics {
         return $grouped.ToArray()
     }
 
+    function Resolve-TacticName {
+        param([string]$Name)
+
+        $trimmed = $Name.Trim()
+        # The API accepts these alert categories as tactics, and the technique map does not carry them
+        $knownNames = @((Get-CustomDetectionMitreTechniqueMap).Keys) + @('SuspiciousActivity', 'Malware')
+        $known = $knownNames | Where-Object { $_ -eq $trimmed } | Select-Object -First 1
+        if ($known) { return $known }
+        return $trimmed
+    }
+
     if ($Tactics) {
         $result = [System.Collections.Generic.List[object]]::new()
         foreach ($tacticItem in @($Tactics)) {
@@ -80,7 +95,7 @@ function ConvertTo-CustomDetectionTactics {
             if (-not $map -or [string]::IsNullOrWhiteSpace("$($map['tactic'])")) {
                 throw "Each tactics entry needs a non-empty 'tactic' value."
             }
-            $entry = [ordered]@{ tactic = "$($map['tactic'])".Trim() }
+            $entry = [ordered]@{ tactic = Resolve-TacticName -Name "$($map['tactic'])" }
             $grouped = @()
             if ($map['techniques']) {
                 $grouped = @(Group-Technique -Items @($map['techniques']))
@@ -100,7 +115,7 @@ function ConvertTo-CustomDetectionTactics {
         return $null
     }
 
-    $entry = [ordered]@{ tactic = $Category.Trim() }
+    $entry = [ordered]@{ tactic = Resolve-TacticName -Name $Category }
     $grouped = @()
     if ($Techniques) {
         $grouped = @(Group-Technique -Items $Techniques)

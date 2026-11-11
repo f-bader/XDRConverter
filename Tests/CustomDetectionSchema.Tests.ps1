@@ -161,4 +161,49 @@ Describe 'CustomDetection schema' {
             (Test-Json -Json ($rule | ConvertTo-Json -Depth 5) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeTrue -Because $name
         }
     }
+
+    It 'Accepts lookback, eventGroupingKind and isExcludedFromIncidentCorrelation' {
+        $rule = $script:BaseRule.Clone()
+        $rule.lookback = 'PT240M'
+        $rule.eventGroupingKind = 'singleAlert'
+        $rule.isExcludedFromIncidentCorrelation = $true
+        (Test-Json -Json ($rule | ConvertTo-Json) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeTrue
+    }
+
+    It 'Rejects singleAlert with the exclusion <Case>, as Graph does' -ForEach @(
+        @{ Case = 'left out'; Excluded = $null }
+        @{ Case = 'false'; Excluded = $false }
+    ) {
+        $rule = $script:BaseRule.Clone()
+        $rule.eventGroupingKind = 'singleAlert'
+        if ($null -ne $Excluded) { $rule.isExcludedFromIncidentCorrelation = $Excluded }
+        (Test-Json -Json ($rule | ConvertTo-Json) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeFalse
+    }
+
+    It 'Accepts alertPerEvent without the exclusion' {
+        $rule = $script:BaseRule.Clone()
+        $rule.eventGroupingKind = 'alertPerEvent'
+        (Test-Json -Json ($rule | ConvertTo-Json) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeTrue
+    }
+
+    It 'Rejects the <Key> value <Value>, as the converter does' -ForEach @(
+        @{ Key = 'eventGroupingKind'; Value = 'unknownFutureValue' }
+        @{ Key = 'lookback'; Value = 'P1W' }
+        @{ Key = 'lookback'; Value = '4H' }
+        @{ Key = 'isExcludedFromIncidentCorrelation'; Value = 'sometimes' }
+    ) {
+        $rule = $script:BaseRule.Clone()
+        $rule[$Key] = $Value
+        (Test-Json -Json ($rule | ConvertTo-Json) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeFalse
+        InModuleScope XDRConverter -Parameters @{ Rule = $rule; Key = $Key } {
+            { ConvertFrom-CustomDetectionYamlToJson -YamlObject $Rule } | Should -Throw "*$Key*"
+        }
+    }
+
+    It 'Accepts more than one tactic' {
+        $rule = $script:BaseRule.Clone()
+        $rule.Remove('alertCategory')
+        $rule.tactics = @(@{ tactic = 'Execution'; techniques = @('T1059.001') }, @{ tactic = 'Persistence' })
+        (Test-Json -Json ($rule | ConvertTo-Json -Depth 5) -SchemaFile $script:SchemaFile -ErrorAction SilentlyContinue) | Should -BeTrue
+    }
 }

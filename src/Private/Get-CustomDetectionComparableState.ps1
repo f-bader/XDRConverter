@@ -29,8 +29,8 @@ function Get-CustomDetectionComparableState {
         }
         if ($Value -isnot [string] -and $Value -is [System.Collections.IEnumerable]) {
             $items = @($Value | ForEach-Object { ConvertTo-SortedObject -Value $_ })
-            # Ordinal, so items that differ only by case never tie. The casts select the non-generic overload, the one that reorders the items
-            $keys = [string[]]@($items | ForEach-Object { ConvertTo-Json -InputObject $_ -Compress -Depth 10 })
+            # Without case first and ordinal on a tie, so equal lists sort alike whether their key compares with or without case. The casts select the non-generic overload, the one that reorders the items
+            $keys = [string[]]@($items | ForEach-Object { $json = ConvertTo-Json -InputObject $_ -Compress -Depth 10; "$($json.ToUpperInvariant())`0$json" })
             [Array]::Sort([Array]$keys, [Array]$items, [System.Collections.IComparer][System.StringComparer]::Ordinal)
             return , $items
         }
@@ -63,6 +63,20 @@ function Get-CustomDetectionComparableState {
             $frequency = "$frequencySource".Trim().ToUpperInvariant()
         }
     }
+
+    $lookbackSource = Get-CustomDetectionValue -Object $Rule -Path 'schedule.lookback'
+    $lookback = ''
+    if (-not [string]::IsNullOrWhiteSpace("$lookbackSource")) {
+        try {
+            $lookback = ConvertTo-CustomDetectionLookback -Value $lookbackSource
+        } catch {
+            # An unrecognised remote value still has to compare, so keep it verbatim
+            $lookback = "$lookbackSource".Trim().ToUpperInvariant()
+        }
+    }
+
+    $excludedSource = Get-CustomDetectionValue -Object $Rule -Path 'detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation'
+    $excluded = if ($null -eq $excludedSource -or "$excludedSource" -eq '') { '' } else { "$excludedSource".ToLowerInvariant() }
 
     $tacticsSource = Get-CustomDetectionValue -Object $Rule -Path 'detectionAction.alertTemplate.tactics'
     $tactics = $null
@@ -130,15 +144,18 @@ function Get-CustomDetectionComparableState {
         status             = "$status"
         description        = "$(Get-CustomDetectionValue -Object $Rule -Path 'description')"
         frequency          = $frequency
+        lookback           = $lookback
         queryText          = "$(Get-CustomDetectionValue -Object $Rule -Path 'queryCondition.queryText')"
         title              = "$(Get-CustomDetectionValue -Object $Rule -Path 'detectionAction.alertTemplate.title')"
         alertDescription   = "$(Get-CustomDetectionValue -Object $Rule -Path 'detectionAction.alertTemplate.description')"
         severity           = ("$(Get-CustomDetectionValue -Object $Rule -Path 'detectionAction.alertTemplate.severity')").ToLowerInvariant()
         recommendedActions = "$(Get-CustomDetectionValue -Object $Rule -Path 'detectionAction.alertTemplate.recommendedActions')"
+        eventGroupingKind  = "$(Get-CustomDetectionValue -Object $Rule -Path 'detectionAction.alertTemplate.eventGroupingKind')"
         tactics            = ConvertTo-SortedJson -Value $tactics
         entityMappings     = ConvertTo-SortedJson -Value $entityMappings
         customDetails      = ConvertTo-SortedJson -Value $customDetails
         automatedActions   = ConvertTo-SortedJson -Value $actions
         deviceGroups       = ConvertTo-SortedJson -Value @($deviceGroups | ForEach-Object { "$_" } | Sort-Object)
+        incidentExclusion  = $excluded
     }
 }

@@ -258,6 +258,25 @@ Describe 'CustomDetection mapping helpers' {
             }
         }
 
+        It 'Spells the known tactic <Value> as <Expected>' -ForEach @(
+            @{ Value = 'execution'; Expected = 'Execution' }
+            @{ Value = 'DEFENSEEVASION'; Expected = 'DefenseEvasion' }
+            @{ Value = ' commandandcontrol '; Expected = 'CommandAndControl' }
+            @{ Value = 'suspiciousactivity'; Expected = 'SuspiciousActivity' }
+            @{ Value = 'MALWARE'; Expected = 'Malware' }
+        ) {
+            InModuleScope XDRConverter -Parameters @{ Value = $Value; Expected = $Expected } {
+                (ConvertTo-CustomDetectionTactics -Category $Value).tactic | Should -BeExactly $Expected
+                @(ConvertTo-CustomDetectionTactics -Tactics @(@{ tactic = $Value }))[0].tactic | Should -BeExactly $Expected
+            }
+        }
+
+        It 'Keeps the casing of a tactic name it does not know' {
+            InModuleScope XDRConverter {
+                (ConvertTo-CustomDetectionTactics -Category 'customTactic').tactic | Should -BeExactly 'customTactic'
+            }
+        }
+
         It 'Prefers an explicit tactics list over category and techniques' {
             InModuleScope XDRConverter {
                 $explicit = @(

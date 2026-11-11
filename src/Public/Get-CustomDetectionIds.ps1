@@ -10,6 +10,10 @@ function Get-CustomDetectionIds {
         (if present). Results are cached for the duration specified by
         CacheTtlMinutes (default: 60 minutes).
 
+        The detector ID is deprecated. When the API rejects it in the request,
+        the list is asked again without it and leaves it out for the rest of the
+        session, so DetectorId is empty from then on.
+
     .PARAMETER CacheTtlMinutes
         How long (in minutes) to keep the cached result before re-querying the API.
         Defaults to 60 minutes.
@@ -70,15 +74,22 @@ function Get-CustomDetectionIds {
 
         try {
             # Query the Microsoft Graph API with pagination support. The projection names the properties the lookups read
-            $listUri = 'https://graph.microsoft.com/beta/security/rules/detectionRules?$select=id,detectorId,displayName,detectionAction'
             $retried = $false
+            $droppedDetectorId = $false
 
             while ($true) {
+                $listUri = if ($script:ListSelectsDetectorId) {
+                    'https://graph.microsoft.com/beta/security/rules/detectionRules?$select=id,detectorId,displayName,detectionAction'
+                } else {
+                    'https://graph.microsoft.com/beta/security/rules/detectionRules?$select=id,displayName,detectionAction'
+                }
+                $pages = 0
                 try {
                     $allValues = [System.Collections.Generic.List[object]]::new()
                     $uri = $listUri
                     do {
                         $response = Invoke-MgGraphRequestWithRetry -Method GET -Uri $uri
+                        $pages++
                         if ($response.value) {
                             $allValues.AddRange([object[]]$response.value)
                         }
@@ -86,6 +97,18 @@ function Get-CustomDetectionIds {
                     } while ($uri)
                     break
                 } catch {
+                    # A first page that answered proves the projection valid, so a later BadRequest is not about detectorId
+                    $projectionRejected = $pages -eq 0 -and (Test-CustomDetectionBadRequest -ErrorRecord $_)
+                    # detectorId is deprecated. An API without it rejects the projection, so the list is asked again without it
+                    if ($projectionRejected -and $script:ListSelectsDetectorId) {
+                        $script:ListSelectsDetectorId = $false
+                        $droppedDetectorId = $true
+                        continue
+                    }
+                    # The list without detectorId was rejected as well, so detectorId was not the cause
+                    if ($projectionRejected -and $droppedDetectorId) {
+                        $script:ListSelectsDetectorId = $true
+                    }
                     if (-not (Test-CustomDetectionListFailure -ErrorRecord $_)) { throw }
                     if ($retried) {
                         $script:DetectionIdsCache.FailedAt = [datetime]::UtcNow
@@ -94,6 +117,10 @@ function Get-CustomDetectionIds {
                     $retried = $true
                     Write-Warning 'The rule list timed out. It is asked once more.'
                 }
+            }
+
+            if ($droppedDetectorId) {
+                Write-Warning 'The API rejected the deprecated detectorId. The rule list leaves it out for the rest of the session, so DetectorId stays empty.'
             }
 
             $result = @($allValues | ForEach-Object { ConvertTo-CustomDetectionIdEntry -Rule $_ })

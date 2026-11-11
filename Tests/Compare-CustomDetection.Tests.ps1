@@ -71,6 +71,28 @@ Describe 'Compare-CustomDetection' {
                 }
             }
         }
+
+        # Sets a dotted path on a hashtable body or a PSCustomObject rule, creating the parents it lacks
+        function Edit-RuleValue {
+            param([object]$Rule, [string]$Path, [object]$Value)
+            $segments = $Path.Split('.')
+            $target = $Rule
+            for ($i = 0; $i -lt $segments.Count - 1; $i++) {
+                $name = $segments[$i]
+                if ($target -is [System.Collections.IDictionary]) {
+                    if ($null -eq $target[$name]) { $target[$name] = @{} }
+                    $target = $target[$name]
+                } else {
+                    if ($null -eq $target.$name) { $target | Add-Member -NotePropertyName $name -NotePropertyValue ([PSCustomObject]@{}) -Force }
+                    $target = $target.$name
+                }
+            }
+            if ($target -is [System.Collections.IDictionary]) {
+                $target[$segments[-1]] = $Value
+            } else {
+                $target | Add-Member -NotePropertyName $segments[-1] -NotePropertyValue $Value -Force
+            }
+        }
     }
 
     AfterAll {
@@ -282,6 +304,69 @@ Describe 'Compare-CustomDetection' {
         $local = New-LocalBody -Overrides @{ 'detectionAction.organizationalScope' = $null }
         $remote = New-RemoteRule
         $remote.detectionAction.organizationalScope = $null
+        InModuleScope XDRConverter -Parameters @{ Local = $local; Remote = $remote } {
+            Compare-CustomDetection -Local $Local -Remote $Remote | Should -Be $false
+        }
+    }
+
+    It 'Keeps the remote <Name> the file does not set without reporting a change or a warning' -ForEach @(
+        @{ Name = 'lookback'; Path = 'schedule.lookback'; Value = 'P1D' }
+        @{ Name = 'event grouping'; Path = 'detectionAction.alertTemplate.eventGroupingKind'; Value = 'singleAlert' }
+        @{ Name = 'incident correlation setting'; Path = 'detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation'; Value = $true }
+    ) {
+        $local = New-LocalBody
+        $remote = New-RemoteRule
+        Edit-RuleValue -Rule $remote -Path $Path -Value $Value
+        InModuleScope XDRConverter -Parameters @{ Local = $local; Remote = $remote } {
+            Compare-CustomDetection -Local $Local -Remote $Remote -WarningVariable w -WarningAction SilentlyContinue | Should -Be $false
+            $w | Should -BeNullOrEmpty
+        }
+    }
+
+    It 'Detects a change in the <Name> the file sets' -ForEach @(
+        @{ Name = 'lookback'; Path = 'schedule.lookback'; FileValue = 'P1D'; RuleValue = 'PT4H' }
+        @{ Name = 'event grouping'; Path = 'detectionAction.alertTemplate.eventGroupingKind'; FileValue = 'singleAlert'; RuleValue = 'alertPerEvent' }
+        @{ Name = 'incident correlation setting'; Path = 'detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation'; FileValue = $true; RuleValue = $false }
+        @{ Name = 'lookback the rule lacks'; Path = 'schedule.lookback'; FileValue = 'PT4H'; RuleValue = $null }
+    ) {
+        $localBody = New-LocalBody
+        Edit-RuleValue -Rule $localBody -Path $Path -Value $FileValue
+        $remoteRule = New-RemoteRule
+        Edit-RuleValue -Rule $remoteRule -Path $Path -Value $RuleValue
+        InModuleScope XDRConverter -Parameters @{ LocalBody = $localBody; RemoteRule = $remoteRule } {
+            Compare-CustomDetection -Local $LocalBody -Remote $RemoteRule | Should -Be $true
+        }
+    }
+
+    It 'Reports no change when the file sets the <Name> the rule holds' -ForEach @(
+        @{ Name = 'lookback in another form'; Path = 'schedule.lookback'; FileValue = 'PT240M'; RuleValue = 'PT4H' }
+        @{ Name = 'event grouping in another casing'; Path = 'detectionAction.alertTemplate.eventGroupingKind'; FileValue = 'SingleAlert'; RuleValue = 'singleAlert' }
+        @{ Name = 'incident correlation default'; Path = 'detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation'; FileValue = $false; RuleValue = $false }
+    ) {
+        $localBody = New-LocalBody
+        Edit-RuleValue -Rule $localBody -Path $Path -Value $FileValue
+        $remoteRule = New-RemoteRule
+        Edit-RuleValue -Rule $remoteRule -Path $Path -Value $RuleValue
+        InModuleScope XDRConverter -Parameters @{ LocalBody = $localBody; RemoteRule = $remoteRule } {
+            Compare-CustomDetection -Local $LocalBody -Remote $RemoteRule | Should -Be $false
+        }
+    }
+
+    It 'Ignores the order of several tactics' {
+        $tactics = @(@{ tactic = 'Execution'; techniques = @('T1059') }, @{ tactic = 'Persistence' })
+        $local = New-LocalBody -Overrides @{ 'detectionAction.alertTemplate.tactics' = $tactics }
+        $remote = New-LocalBody -Overrides @{ 'detectionAction.alertTemplate.tactics' = @($tactics[1], $tactics[0]) }
+        InModuleScope XDRConverter -Parameters @{ Local = $local; Remote = $remote } {
+            Compare-CustomDetection -Local $Local -Remote $Remote | Should -Be $false
+        }
+    }
+
+    It 'Reports no change for <Name> where one differs from the rule only by case' -ForEach @(
+        @{ Name = 'several tactics'; Path = 'detectionAction.alertTemplate.tactics'; LocalValue = @(@{ tactic = 'execution' }, @{ tactic = 'Persistence' }); RemoteValue = @(@{ tactic = 'Execution' }, @{ tactic = 'Persistence' }) }
+        @{ Name = 'several device groups'; Path = 'detectionAction.organizationalScope'; LocalValue = @{ deviceGroups = @('servers', 'Workstations') }; RemoteValue = @{ deviceGroups = @('Servers', 'Workstations') } }
+    ) {
+        $local = New-LocalBody -Overrides @{ $Path = $LocalValue }
+        $remote = New-LocalBody -Overrides @{ $Path = $RemoteValue }
         InModuleScope XDRConverter -Parameters @{ Local = $local; Remote = $remote } {
             Compare-CustomDetection -Local $Local -Remote $Remote | Should -Be $false
         }

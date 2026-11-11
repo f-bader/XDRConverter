@@ -128,7 +128,7 @@ Get-CustomDetection | ConvertTo-CustomDetectionYaml -UseIdAsFilename
 
 ### Deploy-CustomDetection
 
-Creates or updates a Defender XDR custom detection rule from a YAML or JSON file via the Microsoft Graph API. New rules are sent with the rule id `rule-<guid>`, and the YAML `guid` also travels in the description tag. The cmdlet requires a guid in the file. The API itself does not. The Graph reference marks the id as required, but live testing showed the API assigns one when none is sent and rejects one that starts with a digit. The cmdlet detects whether the rule already exists (by rule id, by description tag, or by display name with `-NoDescriptionTag`, and by a direct request for `rule-<guid>` when the rule list carries none of them) and issues a PATCH (update) or POST (create) accordingly. When the rule list does not answer, the rule is looked up by its client id only, and a rule not found that way is reported instead of created. Before updating, it compares the local rule against the remote version and skips the call when nothing changed. The comparison covers every managed property, including tactics, entity mappings, automated actions and device groups.
+Creates or updates a Defender XDR custom detection rule from a YAML or JSON file via the Microsoft Graph API. New rules are sent with the rule id `rule-<guid>`, and the YAML `guid` also travels in the description tag. The cmdlet requires a guid in the file. The API itself does not. The Graph reference marks the id as required, but live testing showed the API assigns one when none is sent and rejects one that starts with a digit. The cmdlet detects whether the rule already exists (by rule id, by description tag, or by display name with `-NoDescriptionTag`, and by a direct request for `rule-<guid>` when the rule list carries none of them) and issues a PATCH (update) or POST (create) accordingly. When the rule list does not answer, the rule is looked up by its client id only, and a rule not found that way is reported instead of created. Before updating, it compares the local rule against the remote version and skips the call when nothing changed. The comparison covers every managed property, including tactics, entity mappings, automated actions and device groups. An id the rule list names that answers NotFound is treated as absent, so the rule is created. A GET can return a rule for a while after its delete. When the rule found is one that `Remove-CustomDetection` deleted in the same session, nothing is written and the deploy throws. Deploy again once a GET for the id answers 404.
 
 #### Parameters
 
@@ -268,11 +268,13 @@ Get-CustomDetection -DetectionId '81fb771a-c57e-41b8-9905-63dbf267c13f' |
 
 ### Get-CustomDetectionIds
 
-Lists detection rule IDs with their description tags and tag prefixes. Results are cached for the specified duration (default: 60 minutes) to reduce API calls. A created rule is added to the cache and a deleted rule is removed from it, so a run that creates many rules asks the list once. A list request that times out is asked once more. After a failed retry the cmdlet throws at once for five minutes, unless `-Force` is set.
+Lists detection rule IDs with their description tags and tag prefixes. Results are cached for the specified duration (default: 60 minutes) to reduce API calls. A created rule is added to the cache and a deleted rule is removed from it, so a run that creates many rules asks the list once. A list request that times out is asked once more. After a failed retry the cmdlet throws at once for five minutes, unless `-Force` is set. The list asks for the deprecated `detectorId`. When the API rejects it, the list is asked again without it and leaves it out for the rest of the session, with a warning.
+
+The list can leave out a rule for hours after its id was deleted and created again, while a GET for the id still returns it. A cleanup that compares the list with its files misses such a rule. `Remove-CustomDetection -DetectorId` deletes it, since it asks for `rule-<guid>` directly when the list does not carry the rule.
 
 The output includes:
 - **Id**: The detection rule ID
-- **DetectorId**: The detector ID the API assigned to the rule
+- **DetectorId**: The detector ID the API assigned to the rule. Empty once the API rejects the deprecated property
 - **DisplayName**: The rule name
 - **DescriptionTag**: The UUID extracted from the description tag (e.g., from `[PREFIX:uuid]` or `[uuid]`)
 - **TagPrefix**: The prefix text from the description tag (e.g., `PREFIX` from `[PREFIX:uuid]`, or `$null` if no prefix)
@@ -301,7 +303,7 @@ Get-CustomDetectionIds -CacheTtlMinutes 10
 
 ### Get-CustomDetectionIdByDetectorId
 
-Returns the detection rule ID for a given guid. The guid is matched against the rule ID in its plain and `rule-` prefixed forms, then against the detector ID the API assigned, then against the description tag. Uses the cached output of `Get-CustomDetectionIds`.
+Returns the detection rule ID for a given guid. The guid is matched against the rule ID in its plain and `rule-` prefixed forms, then against the detector ID the API assigned while the list carries it, then against the description tag. Uses the cached output of `Get-CustomDetectionIds`.
 
 #### Parameters
 
@@ -339,7 +341,7 @@ Get-CustomDetectionIdByDescriptionTag -DescriptionTag '81fb771a-c57e-41b8-9905-6
 
 ### Remove-CustomDetection
 
-Deletes a custom detection rule from Microsoft Defender XDR. The rule can be identified by its detection rule ID, by the guid from the source file (matched against the rule ID with or without the `rule-` prefix), or by the DescriptionTag UUID appended to the alert description during deployment.
+Deletes a custom detection rule from Microsoft Defender XDR. The rule can be identified by its detection rule ID, by the guid from the source file (matched against the rule ID with or without the `rule-` prefix), or by the DescriptionTag UUID appended to the alert description during deployment. The id of a deleted rule is kept for the module session, so `Deploy-CustomDetection` does not take a stale read of it for the live rule.
 
 #### Parameters
 
@@ -381,17 +383,20 @@ The Graph API deprecated several `detectionRule` properties and removes them on 
 | status | No | `status` | `enabled`, `disabled` or `autoDisabled`. Wins over `isEnabled` |
 | isEnabled | No | `status` | Legacy. `true` becomes `enabled`, `false` becomes `disabled`. Defaults to enabled |
 | frequency | Yes | `schedule.frequency` | ISO 8601 duration of days, hours, minutes and seconds. Normalised to the form the API stores, so `PT1440M` and `P1DT0H` become `P1D` and `PT90M` becomes `PT1H30M`. Weeks, months and years are rejected. Legacy tokens `0`, `1H`, `3H`, `12H`, `24H` are translated |
+| lookback | No | `schedule.lookback` | ISO 8601 duration the query covers, normalised like `frequency`. Sent only when the file sets it, otherwise the rule keeps its value. A new rule gets `PT4H` for `PT1H`, `PT12H` for `PT3H`, `P2D` for `PT12H`, `P30D` for `P1D` and none for `PT0S`. A frequency change deployed without `lookback` keeps the stored lookback, a default one included, so set `lookback` together with a new frequency |
 | alertTitle | Yes | `detectionAction.alertTemplate.title` | |
 | alertSeverity | Yes | `detectionAction.alertTemplate.severity` | |
 | alertDescription | Yes | `detectionAction.alertTemplate.description` | The description tag is appended on deploy |
 | alertRecommendedAction | No | `detectionAction.alertTemplate.recommendedActions` | A value the file does not set is left unchanged on the rule |
-| tactics | One of | `detectionAction.alertTemplate.tactics` | One `{ tactic, techniques }` entry. The API rejects more than one tactic per rule. Techniques may be plain ids or `{ technique, subTechniques }`. Wins over `alertCategory` and `mitreTechniques` |
-| alertCategory | One of | `detectionAction.alertTemplate.tactics[0].tactic` | Legacy. Becomes the single tactic |
+| eventGroupingKind | No | `detectionAction.alertTemplate.eventGroupingKind` | `alertPerEvent` or `singleAlert`, matched without case. Sent only when the file sets it, otherwise the rule keeps its value. A new rule gets `alertPerEvent`. The API rejects `singleAlert` unless `isExcludedFromIncidentCorrelation` is `true`, so set both in the file. The editor schema flags a file that does not |
+| tactics | One of | `detectionAction.alertTemplate.tactics` | List of `{ tactic, techniques }` entries. Techniques may be plain ids or `{ technique, subTechniques }`, and each tactic's techniques are validated against that tactic. Wins over `alertCategory` and `mitreTechniques`. The API matches tactic names with case, so a known name is sent in the spelling the API accepts, `execution` as `Execution`. Known names are the tactics of the MITRE check plus `SuspiciousActivity` and `Malware`. Other names are sent as written |
+| alertCategory | One of | `detectionAction.alertTemplate.tactics[0].tactic` | Legacy. Becomes the single tactic, spelled as for `tactics` |
 | mitreTechniques | No | `detectionAction.alertTemplate.tactics[0].techniques` | Legacy flat list. Sub-techniques are grouped under their parent technique |
 | entityMappings | No | `detectionAction.alertTemplate.entityMappings` | Object keyed by entity collection (`accounts`, `hosts`, `mailboxes`, `files`, `ips`, `urls`, ...) holding column mappings. Wins over `impactedEntities` |
 | impactedEntities | No | `detectionAction.alertTemplate.entityMappings` | Legacy `{ entityType, entityIdentifier }` list. `Machine`/`Device` map to `hosts`, `User`/`Account` to `accounts`, `Mailbox` to `mailboxes` |
 | customDetails | No | `detectionAction.alertTemplate.customDetails` | Up to 20 name to column pairs |
 | organizationalScope | No | `detectionAction.organizationalScope.deviceGroups` | Device group names. An empty list is omitted |
+| isExcludedFromIncidentCorrelation | No | `detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation` | `true` or `false`. Sent only when the file sets it, otherwise the rule keeps its value. A new rule gets `false`. Must be `true` with `eventGroupingKind: singleAlert` |
 | actions | No | `detectionAction.automatedActions` | List of `{ actionType, additionalFields }`. See the action table |
 | queryText | Yes | `queryCondition.queryText` | |
 
@@ -446,6 +451,8 @@ The API keeps any collection that a PATCH omits. An update therefore sends an em
 ### JSON to YAML
 
 `ConvertTo-CustomDetectionYaml` always emits the current keys: `frequency` as an ISO 8601 duration, `tactics`, `entityMappings`, `actions` with their column mapping, `customDetails`, `description` and `organizationalScope` as a plain list. `isEnabled` is kept for compatibility and `status` is added only for `autoDisabled`. Rules returned with the legacy properties are translated, so converting an old rule upgrades its YAML file.
+
+`lookback` is emitted only when it differs from the default for the rule's frequency, `eventGroupingKind` only when it is not `alertPerEvent`, and `isExcludedFromIncidentCorrelation` only when it is `true`. A JSON file passed to `Deploy-CustomDetection` keeps every value it states, defaults included, so it can set a rule back to a default. `-LegacyKeys` drops the three keys with a warning.
 
 ### Upgrading existing YAML files
 
@@ -538,6 +545,26 @@ Connect-MgGraph -Scopes 'CustomDetections.ReadWrite.All'
 ```
 
 ## Changelog
+
+### 2.1.0
+
+- New optional YAML keys `lookback`, `eventGroupingKind` and `isExcludedFromIncidentCorrelation`, written to `schedule.lookback`, `detectionAction.alertTemplate.eventGroupingKind` and `detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation`. They reach the request and the change detection only when the file sets them, so a file without them never reports an update
+- `lookback` is normalised to the form the API stores, as `frequency` is
+- `ConvertTo-CustomDetectionYaml` emits the three keys only when they differ from the value the API assigns. `-LegacyKeys` drops them with a warning. A JSON file passed to `Deploy-CustomDetection` sends every value it states, defaults included
+- A rule may list more than one tactic. The techniques of each tactic are still validated against that tactic
+- A known tactic name is sent in the spelling the API accepts, so `execution` deploys as `Execution` instead of being rejected. Known names are the tactics of the MITRE check plus `SuspiciousActivity` and `Malware`. Other names are sent as written
+- The editor schema requires `isExcludedFromIncidentCorrelation: true` when `eventGroupingKind` is `singleAlert`, as the API does
+- `Deploy-CustomDetection` creates a rule when the id the rule list names answers NotFound. It used to stop with the NotFound error
+- `Deploy-CustomDetection` throws for a rule that `Remove-CustomDetection` deleted in the same session while a GET still returns it ([#15](https://github.com/f-bader/XDRConverter/issues/15)). It used to report `Skipped` and leave the rule absent
+- `Get-CustomDetectionIds` asks the rule list again without the deprecated `detectorId` when the API answers the first page with BadRequest, warns once and leaves it out for the rest of the session. Lookups go on by rule ID and description tag. It used to fail every list request, and every deploy with it, on an API without the property
+- Behaviour observed while testing:
+   - Every rule carries `schedule.lookback` and `alertTemplate.eventGroupingKind`. A request that omits them keeps the stored values, and a `null` lookback is ignored
+   - A frequency change deployed through `Deploy-CustomDetection` kept the stored default lookback, `PT4H` at a new frequency of `PT3H`. A set lookback stays as well. Set `lookback` together with a new frequency
+   - The API accepts more than one tactic per rule, with or without techniques
+   - The API rejects a tactic name in another casing, `Invalid tactic 'execution'.`
+   - The API rejects `eventGroupingKind: singleAlert` unless `isExcludedFromIncidentCorrelation` is `true`, `SingleAlert event grouping requires ExcludeFromCorrelation to be true..`. The same requests were accepted on 2026-10-30
+   - Rules whose ids were deleted and created again left the list within an hour of the create and stayed out for more than two hours. A GET for each id returned the rule while the list left it out
+   - A GET can return a deleted rule for more than 35 minutes while a repeated DELETE answers NotFound
 
 ### 2.0.0
 

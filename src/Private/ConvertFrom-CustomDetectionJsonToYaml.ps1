@@ -10,6 +10,12 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         period, isEnabled) are translated so the output uses the current keys.
         isEnabled is always emitted and status only for autoDisabled. Read-only
         and runtime properties are dropped.
+
+        lookback, eventGroupingKind and isExcludedFromIncidentCorrelation are
+        emitted only when they differ from the value the API assigns: the
+        documented lookback for the frequency, alertPerEvent and false.
+        -KeepDefaults emits them whenever the rule carries them, so a deploy
+        from JSON sends a default the file states.
     #>
     [CmdletBinding()]
     param(
@@ -24,7 +30,10 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         [string]$SetSeverity,
 
         [Parameter()]
-        [switch]$ValidateIdentifiers
+        [switch]$ValidateIdentifiers,
+
+        [Parameter()]
+        [switch]$KeepDefaults
     )
 
     $DefaultSortOrderInYAML = @(
@@ -36,13 +45,16 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         'status'
         'alertTitle'
         'frequency'
+        'lookback'
         'alertSeverity'
         'alertDescription'
         'alertRecommendedAction'
+        'eventGroupingKind'
         'tactics'
         'entityMappings'
         'customDetails'
         'organizationalScope'
+        'isExcludedFromIncidentCorrelation'
         'actions'
         'queryText'
     )
@@ -98,9 +110,30 @@ function ConvertFrom-CustomDetectionJsonToYaml {
         $yamlObj['frequency'] = ConvertTo-CustomDetectionFrequency -Value $frequencySource
     }
 
+    # The lookback the API assigns to each frequency when a request sets none. A near-real-time rule has none
+    $defaultLookback = @{ 'PT1H' = 'PT4H'; 'PT3H' = 'PT12H'; 'PT12H' = 'P2D'; 'P1D' = 'P30D' }
+    $lookbackSource = Get-CustomDetectionValue -Object $JsonObject -Path 'schedule.lookback'
+    if (Test-CustomDetectionValue $lookbackSource) {
+        $lookback = ConvertTo-CustomDetectionLookback -Value $lookbackSource
+        if ($KeepDefaults -or $lookback -ne $defaultLookback["$($yamlObj['frequency'])"]) {
+            $yamlObj['lookback'] = $lookback
+        }
+    }
+
     $recommendedActions = Get-CustomDetectionValue -Object $JsonObject -Path 'detectionAction.alertTemplate.recommendedActions'
     if (Test-CustomDetectionValue $recommendedActions) {
         $yamlObj['alertRecommendedAction'] = $recommendedActions
+    }
+
+    $groupingKind = Get-CustomDetectionValue -Object $JsonObject -Path 'detectionAction.alertTemplate.eventGroupingKind'
+    if ((Test-CustomDetectionValue $groupingKind) -and ($KeepDefaults -or "$groupingKind" -ne 'alertPerEvent')) {
+        $yamlObj['eventGroupingKind'] = "$groupingKind"
+    }
+
+    $excluded = Get-CustomDetectionValue -Object $JsonObject -Path 'detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation'
+    if ($null -ne $excluded -and "$excluded" -ne '' -and ($KeepDefaults -or "$excluded" -ne 'false')) {
+        # The value keeps its type so the deploy-side validation can reject one that is not a boolean
+        $yamlObj['isExcludedFromIncidentCorrelation'] = $excluded
     }
 
     $tacticsSource = Get-CustomDetectionValue -Object $JsonObject -Path 'detectionAction.alertTemplate.tactics'

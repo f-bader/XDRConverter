@@ -420,6 +420,20 @@ tactics:
                         "$warning" | Should -Match 'Both tactics and alertCategory/mitreTechniques'
         }
 
+        It 'Sends a tactic written in another casing as Graph spells it' {
+            $yaml = $baseYaml + @"
+
+frequency: 1H
+tactics:
+  - tactic: persistence
+    techniques:
+      - T1547.001
+"@
+            $file = New-YamlFile -Name 'tactic-casing.yaml' -Content $yaml
+            $result = ConvertTo-CustomDetectionJson -InputFile $file -WarningAction SilentlyContinue | ConvertFrom-Json
+            $result.detectionAction.alertTemplate.tactics[0].tactic | Should -BeExactly 'Persistence'
+        }
+
         It 'Carries a detectorId from the file into the body without a warning' {
             $yaml = @"
 guid: 81fb771a-c57e-41b8-9905-63dbf267c13f
@@ -439,16 +453,23 @@ queryText: DeviceEvents
             "$warning" | Should -Not -Match 'detectorId'
         }
 
-        It 'Throws when more than one tactic is listed because the API accepts a single tactic' {
+        It 'Carries every tactic when more than one is listed' {
             $yaml = $baseYaml + @"
 
 frequency: 1H
 tactics:
   - tactic: Persistence
+    techniques:
+      - T1547.001
   - tactic: Execution
 "@
             $file = New-YamlFile -Name 'tactics-multi.yaml' -Content $yaml
-            { ConvertTo-CustomDetectionJson -InputFile $file } | Should -Throw '*single tactic*'
+            $result = ConvertTo-CustomDetectionJson -InputFile $file -WarningAction SilentlyContinue | ConvertFrom-Json
+            $tactics = @($result.detectionAction.alertTemplate.tactics)
+            $tactics.Count | Should -Be 2
+            $tactics[0].tactic | Should -Be 'Persistence'
+            $tactics[0].techniques[0].subTechniques | Should -Be @('T1547.001')
+            $tactics[1].tactic | Should -Be 'Execution'
         }
 
         It 'Throws when neither alertCategory nor tactics is present' {
@@ -559,6 +580,52 @@ organizationalScope: []
             $file = New-YamlFile -Name 'unknown-key.yaml' -Content ($baseYaml + "`nfrequency: 1H`nowner: someone")
             ConvertTo-CustomDetectionJson -InputFile $file -WarningVariable w -WarningAction SilentlyContinue | Out-Null
             $w | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Carries lookback, eventGroupingKind and isExcludedFromIncidentCorrelation into the body' {
+            $yaml = $baseYaml + "`nfrequency: 1H`nlookback: PT240M`neventGroupingKind: SingleAlert`nisExcludedFromIncidentCorrelation: true"
+            $file = New-YamlFile -Name 'settings-set.yaml' -Content $yaml
+            $result = ConvertTo-CustomDetectionJson -InputFile $file -WarningVariable w -WarningAction SilentlyContinue | ConvertFrom-Json
+            $result.schedule.lookback | Should -Be 'PT4H'
+            $result.detectionAction.alertTemplate.eventGroupingKind | Should -Be 'singleAlert'
+            $result.detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation | Should -BeTrue
+            $w | Should -BeNullOrEmpty
+        }
+
+        It 'Carries isExcludedFromIncidentCorrelation when the file sets it to false' {
+            $file = New-YamlFile -Name 'settings-false.yaml' -Content ($baseYaml + "`nfrequency: 1H`nisExcludedFromIncidentCorrelation: false")
+            $result = ConvertTo-CustomDetectionJson -InputFile $file | ConvertFrom-Json
+            $result.detectionAction.incidentConfiguration.isExcludedFromIncidentCorrelation | Should -BeFalse
+        }
+
+        It 'Leaves lookback, eventGroupingKind and the incident configuration out when the file does not set them' {
+            $file = New-YamlFile -Name 'settings-unset.yaml' -Content ($baseYaml + "`nfrequency: 1H")
+            $result = ConvertTo-CustomDetectionJson -InputFile $file | ConvertFrom-Json
+            @($result.schedule.PSObject.Properties.Name) | Should -Be @('frequency')
+            $result.detectionAction.alertTemplate.PSObject.Properties.Name | Should -Not -Contain 'eventGroupingKind'
+            $result.detectionAction.PSObject.Properties.Name | Should -Not -Contain 'incidentConfiguration'
+        }
+
+        It 'Rejects the eventGroupingKind <Value>' -ForEach @(
+            @{ Value = 'unknownFutureValue' }
+            @{ Value = 'perEvent' }
+        ) {
+            $file = New-YamlFile -Name "grouping-$Value.yaml" -Content ($baseYaml + "`nfrequency: 1H`neventGroupingKind: $Value")
+            { ConvertTo-CustomDetectionJson -InputFile $file -WarningAction SilentlyContinue } | Should -Throw "*eventGroupingKind*$Value*"
+        }
+
+        It 'Rejects the lookback <Value>' -ForEach @(
+            @{ Value = '4H' }
+            @{ Value = 'P1W' }
+            @{ Value = 'P1DT' }
+        ) {
+            $file = New-YamlFile -Name "lookback-$Value.yaml" -Content ($baseYaml + "`nfrequency: 1H`nlookback: $Value")
+            { ConvertTo-CustomDetectionJson -InputFile $file -WarningAction SilentlyContinue } | Should -Throw "*lookback*$Value*"
+        }
+
+        It 'Rejects an isExcludedFromIncidentCorrelation value that is not a boolean' {
+            $file = New-YamlFile -Name 'excluded-text.yaml' -Content ($baseYaml + "`nfrequency: 1H`nisExcludedFromIncidentCorrelation: sometimes")
+            { ConvertTo-CustomDetectionJson -InputFile $file -WarningAction SilentlyContinue } | Should -Throw '*isExcludedFromIncidentCorrelation*'
         }
     }
 

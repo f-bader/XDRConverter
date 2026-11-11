@@ -17,6 +17,12 @@ $script:DetectionIdsCache = @{
     FailedAt  = $null
 }
 
+# The rule list asks for the deprecated detectorId until the API rejects it, then leaves it out for the session
+$script:ListSelectsDetectorId = $true
+
+# Rule ids this session deleted, keyed by tenant. A GET can return a deleted rule for a while, so a deploy does not trust it
+$script:DeletedRuleIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
 # Dot-source private then public functions via auto-discovery
 foreach ($scope in 'Private', 'Public') {
     $scopePath = Join-Path -Path $script:ModuleRoot -ChildPath $scope

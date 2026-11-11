@@ -21,10 +21,7 @@ function Get-CustomDetectionByClientId {
         if ($rule -and $rule.id) { return $rule }
         return $null
     } catch {
-        $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
-        if ($statusCode -ne 404 -and $_.Exception.Message -notmatch 'NotFound|\b404\b') {
-            throw
-        }
+        if (-not (Test-CustomDetectionNotFound -ErrorRecord $_)) { throw }
         return $null
     }
 }

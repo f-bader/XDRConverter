@@ -40,6 +40,11 @@ function ConvertTo-CustomDetectionLegacyYaml {
     if ($yaml.Contains('customDetails')) {
         Write-Warning 'customDetails has no legacy key and is dropped.'
     }
+    foreach ($key in @('lookback', 'eventGroupingKind', 'isExcludedFromIncidentCorrelation')) {
+        if ($yaml.Contains($key)) {
+            Write-Warning "$key '$($yaml[$key])' has no legacy key and is dropped."
+        }
+    }
 
     $periodMap = @{ 'PT0S' = '0'; 'PT1H' = '1H'; 'PT3H' = '3H'; 'PT12H' = '12H'; 'P1D' = '24H'; 'PT24H' = '24H' }
     if ($yaml.Contains('frequency')) {

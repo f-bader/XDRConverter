@@ -9,6 +9,9 @@ function ConvertFrom-CustomDetectionYamlToJson {
         current keys (status, tactics, entityMappings, customDetails,
         description, ISO 8601 frequency). Legacy values are translated to the
         current Graph properties. When both forms are present the current key wins.
+        lookback, eventGroupingKind and isExcludedFromIncidentCorrelation reach
+        the body only when the file sets them, since a request that omits them
+        keeps the values the rule holds.
     #>
     [CmdletBinding()]
     param(
@@ -27,9 +30,10 @@ function ConvertFrom-CustomDetectionYamlToJson {
     )
 
     $knownKeys = @(
-        'guid', 'id', 'detectorId', 'ruleName', 'description', 'isEnabled', 'status', 'frequency', 'alertTitle',
-        'alertSeverity', 'alertDescription', 'alertRecommendedAction', 'alertCategory', 'mitreTechniques',
-        'tactics', 'impactedEntities', 'entityMappings', 'customDetails', 'organizationalScope', 'actions', 'queryText'
+        'guid', 'id', 'detectorId', 'ruleName', 'description', 'isEnabled', 'status', 'frequency', 'lookback', 'alertTitle',
+        'alertSeverity', 'alertDescription', 'alertRecommendedAction', 'eventGroupingKind', 'alertCategory', 'mitreTechniques',
+        'tactics', 'impactedEntities', 'entityMappings', 'customDetails', 'organizationalScope', 'isExcludedFromIncidentCorrelation',
+        'actions', 'queryText'
     )
 
     $yaml = ConvertTo-CustomDetectionHashtable -InputObject $YamlObject
@@ -79,6 +83,15 @@ function ConvertFrom-CustomDetectionYamlToJson {
         $alertTemplate.recommendedActions = $recommendedActions
     }
 
+    $groupingKind = Get-CustomDetectionValue -Object $yaml -Path 'eventGroupingKind'
+    if (Test-CustomDetectionValue $groupingKind) {
+        $resolvedKind = [string](@('alertPerEvent', 'singleAlert') | Where-Object { $_ -eq "$groupingKind".Trim() } | Select-Object -First 1)
+        if (-not $resolvedKind) {
+            throw "Unsupported eventGroupingKind '$groupingKind'. Use alertPerEvent or singleAlert."
+        }
+        $alertTemplate.eventGroupingKind = $resolvedKind
+    }
+
     $tacticsInput = Get-CustomDetectionValue -Object $yaml -Path 'tactics'
     $category = Get-CustomDetectionValue -Object $yaml -Path 'alertCategory'
     $techniques = Get-CustomDetectionValue -Object $yaml -Path 'mitreTechniques'
@@ -93,9 +106,6 @@ function ConvertFrom-CustomDetectionYamlToJson {
     }
     if ($tactics.Count -eq 0) {
         throw 'The rule needs an alertCategory or a tactics list.'
-    }
-    if ($tactics.Count -gt 1) {
-        throw "The rule lists $($tactics.Count) tactics. The API accepts a single tactic per rule."
     }
     $alertTemplate['tactics'] = [object[]]$tactics
 
@@ -161,6 +171,16 @@ function ConvertFrom-CustomDetectionYamlToJson {
         }
     }
 
+    $excluded = Get-CustomDetectionValue -Object $yaml -Path 'isExcludedFromIncidentCorrelation'
+    if ($null -ne $excluded -and "$excluded" -ne '') {
+        if ($excluded -isnot [bool] -and "$excluded" -notin @('true', 'false')) {
+            throw "isExcludedFromIncidentCorrelation '$excluded' is not a boolean. Use true or false."
+        }
+        $detectionAction['incidentConfiguration'] = [ordered]@{
+            isExcludedFromIncidentCorrelation = ("$excluded" -eq 'true')
+        }
+    }
+
     $jsonObj = [ordered]@{}
     if ($ruleGuid) {
         $jsonObj.id = "rule-$ruleGuid"
@@ -182,6 +202,10 @@ function ConvertFrom-CustomDetectionYamlToJson {
     }
     $jsonObj.schedule = [ordered]@{
         frequency = ConvertTo-CustomDetectionFrequency -Value (Get-CustomDetectionValue -Object $yaml -Path 'frequency')
+    }
+    $lookback = Get-CustomDetectionValue -Object $yaml -Path 'lookback'
+    if (Test-CustomDetectionValue $lookback) {
+        $jsonObj.schedule.lookback = ConvertTo-CustomDetectionLookback -Value $lookback
     }
     $jsonObj.detectionAction = $detectionAction
 

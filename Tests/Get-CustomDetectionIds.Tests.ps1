@@ -234,6 +234,92 @@ Describe 'Get-CustomDetectionIds' {
         }
     }
 
+    Context 'Deprecated detector id' {
+        BeforeEach {
+            Mock Assert-MgGraphConnection {} -ModuleName XDRConverter
+            InModuleScope XDRConverter {
+                $script:DetectionIdsCache = @{ Data = $null; ExpiresAt = [datetime]::MinValue; FailedAt = $null }
+                $script:ListSelectsDetectorId = $true
+            }
+        }
+
+        AfterEach {
+            InModuleScope XDRConverter { $script:ListSelectsDetectorId = $true }
+        }
+
+        It 'Asks the list again without the detector id when the API rejects the projection' {
+            Mock Invoke-MgGraphRequestWithRetry {
+                if ($Uri -match 'detectorId') { throw 'Response status code does not indicate success: BadRequest (Bad Request).' }
+                return @{ value = @(@{ id = 'rule-1'; displayName = 'A'; detectionAction = @{ alertTemplate = @{ description = 'x [12345678-1234-1234-1234-123456789abc]' } } }) }
+            } -ModuleName XDRConverter
+
+            $result = Get-CustomDetectionIds -WarningVariable warnings -WarningAction SilentlyContinue
+            $result[0].Id | Should -Be 'rule-1'
+            $result[0].DescriptionTag | Should -Be '12345678-1234-1234-1234-123456789abc'
+            $result[0].DetectorId | Should -BeNullOrEmpty
+            @($warnings).Count | Should -Be 1
+            "$($warnings[0])" | Should -BeLike '*detectorId*'
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 1 -Exactly -ParameterFilter { $Uri -match 'detectorId' }
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 1 -Exactly -ParameterFilter { $Uri -match '\$select=id,displayName,detectionAction$' }
+        }
+
+        It 'Leaves the detector id out for the rest of the session' {
+            Mock Invoke-MgGraphRequestWithRetry {
+                if ($Uri -match 'detectorId') { throw 'Response status code does not indicate success: BadRequest (Bad Request).' }
+                return @{ value = @() }
+            } -ModuleName XDRConverter
+
+            Get-CustomDetectionIds -WarningAction SilentlyContinue | Out-Null
+            Get-CustomDetectionIds -Force -WarningVariable warnings | Out-Null
+            @($warnings).Count | Should -Be 0
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 1 -Exactly -ParameterFilter { $Uri -match 'detectorId' }
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 2 -Exactly -ParameterFilter { $Uri -notmatch 'detectorId' }
+        }
+
+        It 'Recognises a BadRequest by its status code' {
+            Mock Invoke-MgGraphRequestWithRetry {
+                if ($Uri -match 'detectorId') {
+                    $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]::BadRequest)
+                    throw [Microsoft.PowerShell.Commands.HttpResponseException]::new('The request failed.', $response)
+                }
+                return @{ value = @() }
+            } -ModuleName XDRConverter
+
+            Get-CustomDetectionIds -WarningAction SilentlyContinue | Out-Null
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 1 -Exactly -ParameterFilter { $Uri -notmatch 'detectorId' }
+        }
+
+        It 'Throws and keeps the detector id when the list without it is rejected as well' {
+            Mock Invoke-MgGraphRequestWithRetry { throw 'Response status code does not indicate success: BadRequest (Bad Request).' } -ModuleName XDRConverter
+
+            { Get-CustomDetectionIds -ErrorAction SilentlyContinue -WarningAction SilentlyContinue } | Should -Throw '*BadRequest*'
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 2 -Exactly
+            InModuleScope XDRConverter { $script:ListSelectsDetectorId | Should -BeTrue }
+        }
+
+        It 'Keeps the detector id after a BadRequest on a later page' {
+            Mock Invoke-MgGraphRequestWithRetry {
+                if ($Uri -match 'skiptoken') { throw 'Response status code does not indicate success: BadRequest (Bad Request).' }
+                return @{
+                    value             = @(@{ id = 'rule-1'; displayName = 'A'; detectionAction = @{ alertTemplate = @{ description = 'x' } } })
+                    '@odata.nextLink' = 'https://graph.microsoft.com/beta/security/rules/detectionRules?$skiptoken=page2'
+                }
+            } -ModuleName XDRConverter
+
+            { Get-CustomDetectionIds -ErrorAction SilentlyContinue } | Should -Throw '*BadRequest*'
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 2 -Exactly
+            InModuleScope XDRConverter { $script:ListSelectsDetectorId | Should -BeTrue }
+        }
+
+        It 'Keeps the detector id after a failure that is not a bad request' {
+            Mock Invoke-MgGraphRequestWithRetry { throw 'Response status code does not indicate success: Forbidden (Forbidden).' } -ModuleName XDRConverter
+
+            { Get-CustomDetectionIds -ErrorAction SilentlyContinue } | Should -Throw '*Forbidden*'
+            Should -Invoke Invoke-MgGraphRequestWithRetry -ModuleName XDRConverter -Times 1 -Exactly -ParameterFilter { $Uri -match 'detectorId' }
+            InModuleScope XDRConverter { $script:ListSelectsDetectorId | Should -BeTrue }
+        }
+    }
+
     Context 'Cache entries' {
         BeforeEach {
             Mock Assert-MgGraphConnection {} -ModuleName XDRConverter
